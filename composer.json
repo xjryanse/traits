@@ -1,0 +1,17 @@
+{
+    "name": "xjryanse/traits",
+    "description": "common traits",
+    "type": "library",
+    "authors": [
+        {
+            "name": "xjryanse",
+            "email": "xjryanse@sina.com"
+        }
+    ],
+    "require": {},
+	"autoload": {
+		"psr-4": {
+		  "xjryanse\\traits\\": "src/"
+		}
+	}	
+}
