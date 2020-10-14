@@ -1,5 +1,5 @@
 <?php
-namespace app\common\traits;
+namespace xjryanse\traits;
 
 use think\facade\Request;
 /**
