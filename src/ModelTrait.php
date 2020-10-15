@@ -1,7 +1,7 @@
 <?php
 namespace xjryanse\traits;
 
-use app\common\service\SnowFlakeService;
+use xjryanse\logic\SnowFlake;
 use think\facade\Request;
 use think\Model;
 
@@ -286,7 +286,7 @@ trait ModelTrait {
      */
     public static function newId()
     {
-        $newId = SnowFlakeService::generateParticle();
+        $newId = SnowFlake::generateParticle();
         return strval($newId);
     }        
 }
