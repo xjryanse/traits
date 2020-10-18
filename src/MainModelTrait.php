@@ -53,6 +53,15 @@ trait MainModelTrait {
         
         return self::mainModel()->update( $data );
     }
+    /*
+     * 设定字段的值
+     * @param type $key     键
+     * @param type $value   值
+     */
+    public function setField($key,$value)
+    {
+        return $this->update([$key=>$value]);
+    }
     
     public function delete()
     {
