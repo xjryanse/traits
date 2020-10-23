@@ -2,6 +2,11 @@
 namespace xjryanse\traits;
 
 use think\facade\Request;
+use xjryanse\logic\ParamInherit;
+use xjryanse\system\logic\ConfigLogic;
+use xjryanse\system\logic\CompanyLogic;
+use xjryanse\system\logic\ColumnLogic;
+
 /**
  * 后台系统管理复用，一般需依赖一堆类库
  */
@@ -9,10 +14,10 @@ trait SystemAdminTrait
 {    
     //参数继承
     protected $paramInherit;
-    //全局公司key
-    protected $scopeCompanyKey;
     //公司信息
     protected $companyInfo;
+    //全局公司key
+    protected $scopeCompanyKey;
     //全局公司id
     protected $scopeCompanyId;
     //字段信息
