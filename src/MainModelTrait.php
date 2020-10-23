@@ -95,7 +95,9 @@ trait MainModelTrait {
             $con[] = ['app_id','=',session('scopeAppId')];
         }
 //        dump(self::mainModel()->hasField('app_id'));
-        return self::mainModel()->where( $con )->order($order)->cache(2)->paginate( intval($perPage) );
+//        return self::mainModel()->where( $con )->order($order)->cache(2)->paginate( intval($perPage) );
+        $res = self::mainModel()->where( $con )->order($order)->cache(2)->paginate( intval($perPage) );
+        return $res ? $res->toArray() : [] ;        
     }    
     /**
      * 自带当前公司的列表查询
