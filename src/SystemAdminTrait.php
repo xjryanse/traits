@@ -279,17 +279,16 @@ trait SystemAdminTrait
                 $con1   = [];
                 $con1[] = [$v['option']['main_field'],'=', $id ];
                 //先删再写
-                ColumnLogic::dynamicDelete($v['option']['to_table'], $con1);
-                $dataArr = [];
+                $class = DbOperate::getService( $v['option']['to_table'] );
+                $class::mainModel()->where( $con1 )->delete();
                 foreach($data[$v['name']] as $vv){
                     //写资源
                     $tmpData = [];
                     $tmpData[$v['option']['main_field']] = $id;
                     $tmpData[$v['option']['to_field']] = $vv;
-                    $dataArr[] = $tmpData;
+                    //TODO优化为批量保存
+                    $class::save( $tmpData );
                 }
-                //批量保存
-                ColumnLogic::dynamicSaveAll( $v['option']['to_table'], $dataArr );
             }
         }
     }
