@@ -18,9 +18,10 @@ trait WePubAuthTrait
     protected $wePubAppId;
     //微信公众号appsecret
     protected $appSecret;    
-    
+    //公众号对应的用户信息
     protected $wePubUserInfo;
-    
+    //用于存储微信链接类
+    protected $wxUrl;
     /**
      * 【1】微信授权登录
      */
