@@ -8,11 +8,14 @@
             "email": "xjryanse@sina.com"
         }
     ],
-    "require": {},
-	"license": "MIT",
-	"autoload": {
-		"psr-4": {
-		  "xjryanse\\traits\\": "src/"
-		}
-	}	
+    "require": {
+        "xjryanse/system": "0.0.*",
+        "xjryanse/logic": "0.0.*"        
+    },
+    "license": "MIT",
+    "autoload": {
+            "psr-4": {
+              "xjryanse\\traits\\": "src/"
+            }
+    }	
 }
