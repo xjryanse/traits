@@ -22,6 +22,8 @@ trait WePubAuthTrait
     protected $wePubUserInfo;
     //用于存储微信链接类
     protected $wxUrl;
+    //微信粉丝类库
+    protected $wePubFans;
     /**
      * 【1】微信授权登录
      */
@@ -31,6 +33,19 @@ trait WePubAuthTrait
         if( !WxBrowser::isWxBrowser() ){
             return ;
         }
+        //授权账户
+        $this->initWePubAccount( $acid );
+        //没有粉丝token，跳转授权页面
+        if(!$this->wePubFans->token){
+            $this->wePubGetToken();         exit;
+        }
+        $this->wePubUserInfo    = $this->wePubFans->getUserInfo();
+    }
+    /**
+     * 只授权账户，不包含用户信息
+     */
+    protected function initWePubAccount( $acid )
+    {
         //获取acid
         if(!$acid){
             $acid = SystemCompanyService::getInstance( session('scopeCompanyId') )->fWePubId();
@@ -39,22 +54,19 @@ trait WePubAuthTrait
         //acid查询公众号账户信息
         $app = WechatWePubService::getInstance($this->wePubAcid)->get();
         if(!$app){
-            return ;
-        }        
+            echo json_encode(['code' => '1',"msg"=>'公众号不存在']); exit;
+        }
         
         $this->wePubAppId        = $app->appid;
         $this->wePubAppSecret    = $app->secret;
         //②获取用户信息
         $this->openid       = session('myOpenid') ? : "";
-        $this->fans         = new Fans( $this->wePubAcid, $this->openid);
-        $this->wxUrl        = $this->fans->wxUrl;
-        if(!$this->fans->token){
-            $this->wePubGetToken();         exit;
-        }
-        $this->wePubUserInfo    = $this->fans->getUserInfo();
+        $this->wePubFans    = new Fans( $this->wePubAcid, $this->openid);
+        $this->wxUrl        = $this->wePubFans->wxUrl;
     }
+            
     /**
-     * 获取token
+     * 用户授权，获取token
      */
     private function wePubGetToken()
     {
