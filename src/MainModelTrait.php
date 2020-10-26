@@ -121,6 +121,18 @@ trait MainModelTrait {
     {
         return self::lists( $con );
     }
+    /*
+     * 按字段值查询数据
+     * @param type $fieldName   字段名
+     * @param type $fieldValue  字段值
+     * @param type $con         其他条件
+     * @return type
+     */
+    public static function listsByField( $fieldName, $fieldValue, $con = [] )
+    {
+        $con[] = [ $fieldName , '=',$fieldValue ];
+        return self::lists( $con );
+    }
     /**
      * id数组
      * @param type $con
