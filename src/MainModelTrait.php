@@ -231,7 +231,7 @@ trait MainModelTrait {
      * 校验事务是否处于开启状态
      * @throws Exception
      */
-    protected static function checkTransaction(){
+    public static function checkTransaction(){
         if(!self::mainModel()->inTransaction()){
             throw new Exception('请开启数据库事务');
         }
@@ -240,7 +240,7 @@ trait MainModelTrait {
      * 校验是否当前公司数据
      * @throws Exception
      */
-    protected static function checkCurrentCompany( $companyId ){
+    public static function checkCurrentCompany( $companyId ){
         //当前无session，或当前session与指定公司id不符
         if( !session('scopeCompanyId') || session('scopeCompanyId') != $companyId ){
             throw new Exception('未找到数据项~~');
