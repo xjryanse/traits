@@ -51,18 +51,48 @@ trait MainModelTrait {
             if(!isset($tmpData['id'])|| !$tmpData['id']){
                 $tmpData['id'] = self::mainModel()->newId();
             }
-            if( session('scopeCompanyId') && !isset($tmpData['company_id'])){
+            if( session('scopeCompanyId') && !isset($tmpData['company_id']) ){
                 $tmpData['company_id'] = session('scopeCompanyId');
             }
-            if( session('scopeAppId') && !isset($tmpData['app_id'])){
+            if( session('scopeAppId') && !isset($tmpData['app_id']) ){
                 $tmpData['app_id'] = session('scopeAppId');
             }
             $tmpArr[] = $tmpData ;
         }
-        
         return self::mainModel()->saveAll( $tmpArr );
     }
-    
+    /**
+     * 关联表数据保存
+     * @param type $mainField   主字段
+     * @param type $mainValue   主字段值
+     * @param type $arrField    数组字段
+     * @param type $arrValues   数组值：一维数据写入数组字段，二维数据直接存储
+     */
+    public static function midSave( $mainField, $mainValue, $arrField, $arrValues )
+    {
+        self::checkTransaction();
+
+        $con[]      = [ $mainField ,'=', $mainValue ];
+        self::mainModel()->where( $con )->delete();
+        $tmpData    = [];
+        foreach( $arrValues as $value ){
+            if(is_array( $value )){
+                $tmp = $value;
+            } else {
+                $tmp = [];
+                $tmp[ $arrField ]   =   $value;
+            }
+            $tmp[ $mainField ]  =   $mainValue ;
+            $tmpData[] = $tmp; 
+        }
+        return self::saveAll( $tmpData );
+    }
+    /**
+     * 更新
+     * @param array $data
+     * @return type
+     * @throws Exception
+     */
     public function update( array $data )
     {
         if(!$this->get()){
