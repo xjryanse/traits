@@ -39,7 +39,28 @@ trait MainModelTrait {
             $data['app_id'] = session('scopeAppId');
         }
         return self::mainModel()->create( $data );
-
+    }
+    /*
+     * 批量保存
+     */
+    public static function saveAll ( array $data )
+    {
+        $tmpArr = [];
+        foreach( $data as $v){
+            $tmpData        = $v ;
+            if(!isset($tmpData['id'])|| !$tmpData['id']){
+                $tmpData['id'] = self::mainModel()->newId();
+            }
+            if( session('scopeCompanyId') && !isset($tmpData['company_id'])){
+                $tmpData['company_id'] = session('scopeCompanyId');
+            }
+            if( session('scopeAppId') && !isset($tmpData['app_id'])){
+                $tmpData['app_id'] = session('scopeAppId');
+            }
+            $tmpArr[] = $tmpData ;
+        }
+        
+        return self::mainModel()->saveAll( $tmpArr );
     }
     
     public function update( array $data )
