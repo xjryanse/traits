@@ -59,7 +59,8 @@ trait MainModelTrait {
             }
             $tmpArr[] = $tmpData ;
         }
-        return self::mainModel()->saveAll( $tmpArr );
+        //saveAll方法新增数据默认会自动识别数据是需要新增还是更新操作，当数据中存在主键的时候会认为是更新操作，如果你需要带主键数据批量新增，可以使用下面的方式
+        return self::mainModel()->saveAll( $tmpArr ,false );
     }
     /**
      * 关联表数据保存
