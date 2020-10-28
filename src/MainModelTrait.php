@@ -38,6 +38,10 @@ trait MainModelTrait {
         if( session('scopeAppId') && !isset($data['app_id'])){
             $data['app_id'] = session('scopeAppId');
         }
+        if( session('scopeUserId') && !isset($data['creater'])){
+            $data['creater'] = session('scopeUserId');
+        }
+        
         return self::mainModel()->create( $data );
     }
     /*
@@ -56,6 +60,9 @@ trait MainModelTrait {
             }
             if( session('scopeAppId') && !isset($tmpData['app_id']) ){
                 $tmpData['app_id'] = session('scopeAppId');
+            }
+            if( session('scopeUserId') && !isset($tmpData['creater']) ){
+                $tmpData['creater'] = session('scopeUserId');
             }
             $tmpArr[] = $tmpData ;
         }
@@ -102,7 +109,10 @@ trait MainModelTrait {
         if(!isset($data['id']) || !$data['id']){
             $data['id'] = $this->uuid;
         }
-        
+        if( session('scopeUserId') && !isset($data['updater']) ){
+            $data['updater'] = session('scopeUserId');
+        }
+
         return self::mainModel()->update( $data );
     }
     /*
