@@ -59,8 +59,9 @@ trait SystemAdminTrait
         $this->myRequestUrl     = url( Request::action(), array_merge($this->paramInherit,['comKey'=>$this->scopeCompanyKey]));
         //配置项获取
         $this->sysConfigs       = ConfigLogic::getConfigs();
+        //session用户信息
+        $this->admUser          = session('scopeUserInfo');
     }
-    
     /**
      * 【2】初始化参数渲染
      */
@@ -80,6 +81,8 @@ trait SystemAdminTrait
         $this->assign( 'sysConfigs', $this->sysConfigs );
         //字段信息
         $this->assign( 'columnInfo', $this->columnInfo );
+        //公司码
+        $this->assign('scopeCompanyId',$this->scopeCompanyId);
     }
     /**
      * 公共列表页
