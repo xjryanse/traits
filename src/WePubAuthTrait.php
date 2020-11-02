@@ -72,7 +72,7 @@ trait WePubAuthTrait
     {
         $url            = Request::url(true);
         //用于微信回调后跳转
-        session('jump_url',$url);
+        session( SESSION_WEPUB_CALLBACK ,$url);
         //Oauth2Authorize
         $this->redirect( $this->wxUrl['Connect']->Oauth2Authorize( $this->wePubAcid ) );
     }    
