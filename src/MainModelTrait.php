@@ -41,7 +41,9 @@ trait MainModelTrait {
         if( session('scopeUserId') && !isset($data['creater'])){
             $data['creater'] = session('scopeUserId');
         }
-        
+        $data['create_time'] = date('Y-m-d H:i:s');
+        $data['update_time'] = date('Y-m-d H:i:s');
+
         return self::mainModel()->create( $data );
     }
     /*
@@ -64,6 +66,10 @@ trait MainModelTrait {
             if( session('scopeUserId') && !isset($tmpData['creater']) ){
                 $tmpData['creater'] = session('scopeUserId');
             }
+
+            $tmpData['create_time'] = date('Y-m-d H:i:s');
+            $tmpData['update_time'] = date('Y-m-d H:i:s');
+            
             $tmpArr[] = $tmpData ;
         }
         //saveAll方法新增数据默认会自动识别数据是需要新增还是更新操作，当数据中存在主键的时候会认为是更新操作，如果你需要带主键数据批量新增，可以使用下面的方式
@@ -112,6 +118,7 @@ trait MainModelTrait {
         if( session('scopeUserId') && !isset($data['updater']) ){
             $data['updater'] = session('scopeUserId');
         }
+        $tmpData['update_time'] = date('Y-m-d H:i:s');
 
         return self::mainModel()->update( $data );
     }
