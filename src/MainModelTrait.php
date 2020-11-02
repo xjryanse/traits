@@ -32,14 +32,14 @@ trait MainModelTrait {
         if(!isset($data['id'])|| !$data['id']){
             $data['id'] = self::mainModel()->newId();
         }
-        if( session('scopeCompanyId') && !isset($data['company_id'])){
-            $data['company_id'] = session('scopeCompanyId');
+        if( session(SESSION_COMPANY_ID) && !isset($data['company_id'])){
+            $data['company_id'] = session(SESSION_COMPANY_ID);
         }
-        if( session('scopeAppId') && !isset($data['app_id'])){
-            $data['app_id'] = session('scopeAppId');
+        if( session(SESSION_APP_ID) && !isset($data['app_id'])){
+            $data['app_id'] = session(SESSION_APP_ID);
         }
-        if( session('scopeUserId') && !isset($data['creater'])){
-            $data['creater'] = session('scopeUserId');
+        if( session(SESSION_USER_ID) && !isset($data['creater'])){
+            $data['creater'] = session(SESSION_USER_ID);
         }
         $data['create_time'] = date('Y-m-d H:i:s');
         $data['update_time'] = date('Y-m-d H:i:s');
@@ -57,14 +57,14 @@ trait MainModelTrait {
             if(!isset($tmpData['id'])|| !$tmpData['id']){
                 $tmpData['id'] = self::mainModel()->newId();
             }
-            if( session('scopeCompanyId') && !isset($tmpData['company_id']) ){
-                $tmpData['company_id'] = session('scopeCompanyId');
+            if( session(SESSION_COMPANY_ID) && !isset($tmpData['company_id']) ){
+                $tmpData['company_id'] = session(SESSION_COMPANY_ID);
             }
-            if( session('scopeAppId') && !isset($tmpData['app_id']) ){
-                $tmpData['app_id'] = session('scopeAppId');
+            if( session(SESSION_APP_ID) && !isset($tmpData['app_id']) ){
+                $tmpData['app_id'] = session(SESSION_APP_ID);
             }
-            if( session('scopeUserId') && !isset($tmpData['creater']) ){
-                $tmpData['creater'] = session('scopeUserId');
+            if( session(SESSION_USER_ID) && !isset($tmpData['creater']) ){
+                $tmpData['creater'] = session(SESSION_USER_ID);
             }
 
             $tmpData['create_time'] = date('Y-m-d H:i:s');
@@ -115,8 +115,8 @@ trait MainModelTrait {
         if(!isset($data['id']) || !$data['id']){
             $data['id'] = $this->uuid;
         }
-        if( session('scopeUserId') && !isset($data['updater']) ){
-            $data['updater'] = session('scopeUserId');
+        if( session(SESSION_USER_ID) && !isset($data['updater']) ){
+            $data['updater'] = session(SESSION_USER_ID);
         }
         $tmpData['update_time'] = date('Y-m-d H:i:s');
 
@@ -144,7 +144,7 @@ trait MainModelTrait {
     public static function lists( $con = [],$order='')
     {
         if(self::mainModel()->hasField('app_id')){
-            $con[] = ['app_id','=',session('scopeAppId')];
+            $con[] = ['app_id','=',session(SESSION_APP_ID)];
         }
         if( !$order && self::mainModel()->hasField('sort')){
             $order = "sort";
@@ -161,7 +161,7 @@ trait MainModelTrait {
     public static function paginate( $con = [],$order='',$perPage=10)
     {
         if(self::mainModel()->hasField('app_id')){
-            $con[] = ['app_id','=',session('scopeAppId')];
+            $con[] = ['app_id','=',session(SESSION_APP_ID)];
         }
 //        dump(self::mainModel()->hasField('app_id'));
 //        return self::mainModel()->where( $con )->order($order)->cache(2)->paginate( intval($perPage) );
@@ -176,9 +176,9 @@ trait MainModelTrait {
     public static function listsCompany( $con = [])
     {
         if(self::mainModel()->hasField('app_id')){
-            $con[] = ['app_id','=',session('scopeAppId')];
+            $con[] = ['app_id','=',session(SESSION_APP_ID)];
         }
-        $con[] = ['company_id','=',session('scopeCompanyId')];
+        $con[] = ['company_id','=',session(SESSION_COMPANY_ID)];
         return self::mainModel()->where( $con )->cache(2)->select();
     }
     
@@ -210,7 +210,7 @@ trait MainModelTrait {
     public static function ids( $con = [])
     {
         if(self::mainModel()->hasField('app_id')){
-            $con[] = ['app_id','=',session('scopeAppId')];
+            $con[] = ['app_id','=',session(SESSION_APP_ID)];
         }
         return self::mainModel()->where( $con )->cache(2)->column('id');
     }
@@ -223,7 +223,7 @@ trait MainModelTrait {
     public static function column( $field,$con = [])
     {
         if(self::mainModel()->hasField('app_id')){
-            $con[] = ['app_id','=',session('scopeAppId')];
+            $con[] = ['app_id','=',session(SESSION_APP_ID)];
         }
         return self::mainModel()->where( $con )->cache(2)->column($field);
     }    
@@ -236,7 +236,7 @@ trait MainModelTrait {
     public static function count( $con = [])
     {
         if(self::mainModel()->hasField('app_id')){
-            $con[] = ['app_id','=',session('scopeAppId')];
+            $con[] = ['app_id','=',session(SESSION_APP_ID)];
         }
         return self::mainModel()->where( $con )->cache(2)->count(  );
     }    
@@ -248,7 +248,7 @@ trait MainModelTrait {
     public static function sum( $con = [],$field = '')
     {
         if(self::mainModel()->hasField('app_id')){
-            $con[] = ['app_id','=',session('scopeAppId')];
+            $con[] = ['app_id','=',session(SESSION_APP_ID)];
         }
         return self::mainModel()->where( $con )->cache(2)->sum( $field );
     }    
@@ -279,7 +279,7 @@ trait MainModelTrait {
     public static function find( $con = [],$cache=5)
     {
         if(self::mainModel()->hasField('app_id')){
-            $con[] = ['app_id','=',session('scopeAppId')];
+            $con[] = ['app_id','=',session(SESSION_APP_ID)];
         }
         $inst = self::mainModel()->where( $con );
         return $cache
@@ -311,7 +311,7 @@ trait MainModelTrait {
      */
     public static function checkCurrentCompany( $companyId ){
         //当前无session，或当前session与指定公司id不符
-        if( !session('scopeCompanyId') || session('scopeCompanyId') != $companyId ){
+        if( !session(SESSION_COMPANY_ID) || session(SESSION_COMPANY_ID) != $companyId ){
             throw new Exception('未找到数据项~~');
         }
     }

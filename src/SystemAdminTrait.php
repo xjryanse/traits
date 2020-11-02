@@ -42,7 +42,7 @@ trait SystemAdminTrait
         //参数继承
         $this->paramInherit     = ParamInherit::get();
         //全局公司key
-        $this->scopeCompanyKey  = Request::param('comKey','') ? : session('scopeCompanyKey');
+        $this->scopeCompanyKey  = Request::param('comKey','') ? : session(SESSION_COMPANY_KEY);
         //公司信息
         $this->companyInfo      = CompanyLogic::hasCompany();
         //全局公司id
@@ -82,7 +82,7 @@ trait SystemAdminTrait
         //字段信息
         $this->assign( 'columnInfo', $this->columnInfo );
         //公司码
-        $this->assign('scopeCompanyId',$this->scopeCompanyId);
+        $this->assign(SESSION_COMPANY_ID,$this->scopeCompanyId);
     }
     /**
      * 公共列表页
@@ -374,8 +374,8 @@ trait SystemAdminTrait
             if(!$data2){
                 continue;
             }
-            if(DbService::getInstance( $v['option']['table_name'] )->dbHasField('company_id') && session('scopeCompanyId')){
-                $data2[$v['name']]['company_id'] = session('scopeCompanyId');
+            if(DbService::getInstance( $v['option']['table_name'] )->dbHasField('company_id') && session(SESSION_COMPANY_ID)){
+                $data2[$v['name']]['company_id'] = session(SESSION_COMPANY_ID);
             }
             
             if(isset( $v['option']['label'] )){

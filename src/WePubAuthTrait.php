@@ -48,7 +48,7 @@ trait WePubAuthTrait
     {
         //获取acid
         if(!$acid){
-            $acid = SystemCompanyService::getInstance( session('scopeCompanyId') )->fWePubId();
+            $acid = SystemCompanyService::getInstance( session(SESSION_COMPANY_ID) )->fWePubId();
         }
         $this->wePubAcid = $acid;
         //acid查询公众号账户信息
