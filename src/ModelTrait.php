@@ -85,22 +85,22 @@ trait ModelTrait {
     private function condition($k, $key, &$param, $value) {
         $con = [];
         switch ($k) {
-            case 0: //精确查找
+            case "equal": //精确查找
                 if (isset($param[$value]) && strlen($param[$value])) {
                     $con[] = [$key, '=', $this->preg($param[$value])];
                 }
                 break;
-            case 1: //模糊查找
+            case "like": //模糊查找
                 if (isset($param[$value]) && strlen($param[$value])) {
                     $con[] = [$key, 'like', '%' . $this->preg($param[$value]) . '%'];
                 }
                 break;
-            case 2: //in查找
+            case "in": //in查找
                 if (isset($param[$value])) {
                     $con[] = [$key, 'in', $param[$value]];
                 }
                 break;
-            case 3: //数据范围查找
+            case "numberscope": //数据范围查找
                 if (isset($param[$value][0]) && strlen($param[$value][0])) {
                     $con[] = [$key, '>=', $param[$value][0]];
                 }
@@ -108,7 +108,7 @@ trait ModelTrait {
                     $con[] = [$key, '<=', $param[$value][1]];
                 }
                 break;
-            case 4: //时间范围查询
+            case "timescope": //时间范围查询
                 if (isset($param[$value][0]) && strlen($param[$value][0])) {
                     $param[$value][0] = date('Y-m-d 00:00:00', strtotime($param[$value][0]));
                     $con[] = [$key, '>=', $param[$value][0]];
@@ -118,7 +118,7 @@ trait ModelTrait {
                     $con[] = [$key, '<=', $param[$value][1]];
                 }
                 break;
-            case 5: //not in查询
+            case "notin": //not in查询
                 if (isset($param[$value])) {
                     $con[] = [$key, 'not in', $param[$value]];
                 }
