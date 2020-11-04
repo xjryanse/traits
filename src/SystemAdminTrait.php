@@ -278,8 +278,8 @@ trait SystemAdminTrait
             if(!isset($data[$v['name']])){
                 continue;
             }
-
-            if($v['type'] == 'check'){
+            //复选框，动态树
+            if( in_array($v['type'],[FR_COL_TYPE_CHECK, FR_COL_TYPE_DYNTREE ])){
                 $con1   = [];
                 $con1[] = [$v['option']['main_field'],'=', $id ];
                 //先删再写
