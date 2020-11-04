@@ -141,7 +141,7 @@ trait MainModelTrait {
         return self::mainModel()->where('id',$this->uuid)->delete( );
     }    
     /**************************查询方法********************************/
-    public static function lists( $con = [],$order='')
+    public static function lists( $con = [],$order='',$field="*")
     {
         if(self::mainModel()->hasField('app_id')){
             $con[] = ['app_id','=',session(SESSION_APP_ID)];
@@ -149,7 +149,7 @@ trait MainModelTrait {
         if( !$order && self::mainModel()->hasField('sort')){
             $order = "sort";
         }
-        return self::mainModel()->where( $con )->order($order)->cache(2)->select();
+        return self::mainModel()->where( $con )->order($order)->field($field)->cache(2)->select();
     }
     /**
      * 分页的查询
@@ -173,13 +173,16 @@ trait MainModelTrait {
      * @param type $con
      * @return type
      */
-    public static function listsCompany( $con = [])
+    public static function listsCompany( $con = [],$order='',$field="*")
     {
         if(self::mainModel()->hasField('app_id')){
             $con[] = ['app_id','=',session(SESSION_APP_ID)];
         }
         $con[] = ['company_id','=',session(SESSION_COMPANY_ID)];
-        return self::mainModel()->where( $con )->cache(2)->select();
+        if( !$order && self::mainModel()->hasField('sort')){
+            $order = "sort";
+        }
+        return self::mainModel()->where( $con )->order($order)->field($field)->cache(2)->select();
     }
     
     /**
