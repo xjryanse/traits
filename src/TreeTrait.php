@@ -14,14 +14,14 @@ trait TreeTrait
      * @param bool   $isTree  是否树状
      * @return array
      */
-    protected function forLayuiTree(array $data, $repCol='', $isTree=true, $mainColumn = 'name')
+    protected static function forLayuiTree(array $data, $repCol='', $isTree=true, $mainColumn = 'name')
     {
         if(!empty($repCol)){
             foreach($data as $k=>$v){
                 $data[$k][$mainColumn]  =$v[$repCol];
             }
         }
-        return $isTree ? $this->makeTree($data) : $data;        //判断是否输出数状，否则输出原样                            
+        return $isTree ? self::makeTree($data) : $data;        //判断是否输出数状，否则输出原样                            
     }
     
     /**
@@ -32,12 +32,12 @@ trait TreeTrait
      * @param type $child   子元素名
      * @return type
      */
-    protected function makeTree($arr,$pid=0,$pidname='pid',$child='list')
+    protected static function makeTree($arr,$pid=0,$pidname='pid',$child='list')
     {
 	$trees = [];
 	foreach ($arr as $key => $item) {
             if( $item[$pidname] ==$pid ){
-                $item[$child] = $this->makeTree($arr,$item['id']);
+                $item[$child] = self::makeTree($arr,$item['id']);
                 $trees[] = $item;
             }
 	}

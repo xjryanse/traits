@@ -188,7 +188,8 @@ trait SystemAdminTrait
         $res    = $class::getInstance( $id )->get( );
         
         foreach( $this->columnInfo['listInfo'] as $v){
-            if($v['type'] == 'check'){
+            if( in_array( $v['type'],[ FR_COL_TYPE_CHECK,FR_COL_TYPE_DYNTREE]) ){
+//                dump($v);
                 $con1   = [];
                 $con1[] = [$v['option']['main_field'],'=',$res['id']];
                 $rr = ColumnLogic::dynamicColumn($v['option']['to_table'], $v['name'], 'id',$con1);
