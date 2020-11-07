@@ -127,7 +127,7 @@ trait SystemAdminTrait
         $perPage        = Request::param( 'per_page', 20 );
         $class          = DbOperate::getService( $info['table_name'] );
         //分页数据
-        $list   = $class::paginate( $con , '' ,$perPage);
+        $list   = $class::paginate( $con , $info['order_by'] ,$perPage);
 
         //添加额外的数据
         foreach($list['data'] as &$vv){
