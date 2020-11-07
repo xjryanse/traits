@@ -3,10 +3,7 @@ namespace xjryanse\traits;
 
 use think\Db;
 use think\facade\Request;
-use xjryanse\logic\ParamInherit;
 use xjryanse\logic\DbOperate;
-use xjryanse\system\logic\ConfigLogic;
-use xjryanse\system\logic\CompanyLogic;
 use xjryanse\system\logic\ColumnLogic;
 use xjryanse\system\logic\ExportLogic;
 
