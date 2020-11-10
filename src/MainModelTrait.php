@@ -118,7 +118,7 @@ trait MainModelTrait {
         if( session(SESSION_USER_ID) && !isset($data['updater']) ){
             $data['updater'] = session(SESSION_USER_ID);
         }
-        $tmpData['update_time'] = date('Y-m-d H:i:s');
+        $data['update_time'] = date('Y-m-d H:i:s');
 
         return self::mainModel()->update( $data );
     }
@@ -130,6 +130,24 @@ trait MainModelTrait {
     public function setField($key,$value)
     {
         return $this->update([$key=>$value]);
+    }
+
+    /*
+     * 设定字段的值
+     * @param type $key         键
+     * @param type $preValue    原值
+     * @param type $aftValue    新值
+     * @return type
+     */
+    public function setFieldWithPreValCheck($key,$preValue,$aftValue)
+    {
+        $info = $this->get(0);
+        if($info[$key] != $preValue){
+            throw new Exception( $key .'的原值不是'. $preValue );
+        }
+        $con[] = [ $key ,'=',$preValue];
+        $con[] = [ 'id' ,'=',$this->uuid ];
+        return self::mainModel()->where( $con )->update([$key=>$aftValue]);
     }
     
     public function delete()
