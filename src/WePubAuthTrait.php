@@ -24,6 +24,9 @@ trait WePubAuthTrait
     protected $wxUrl;
     //微信粉丝类库
     protected $wePubFans;
+    //当前用户openid
+    protected $openid;
+    
     /**
      * 【1】微信授权登录
      */
