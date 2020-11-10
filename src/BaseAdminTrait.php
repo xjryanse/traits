@@ -29,9 +29,9 @@ trait BaseAdminTrait
         $admKey                 = Request::param('admKey','');
         $this->columnInfo       = ColumnLogic::defaultColumn( $controller, $admKey );
         //对应表名
-        $this->admTable         = $this->columnInfo['table_name'];
+        $this->admTable         = isset($this->columnInfo['table_name']) ? $this->columnInfo['table_name'] : '';
         //对应表id
-        $this->admTableId       = $this->columnInfo['id'];
+        $this->admTableId       = isset($this->columnInfo['id']) ? $this->columnInfo['id'] : '';
     }
     /**
      * 【2】初始化参数渲染
