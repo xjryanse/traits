@@ -143,7 +143,8 @@ trait MainModelTrait {
     {
         $info = $this->get(0);
         if($info[$key] != $preValue){
-            throw new Exception( $key .'的原值不是'. $preValue );
+            throw new Exception( self::mainModel()->getTable().'表'. $this->uuid.'记录' 
+                    .$key .'的原值不是'. $preValue );
         }
         $con[] = [ $key ,'=',$preValue];
         $con[] = [ 'id' ,'=',$this->uuid ];
