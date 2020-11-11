@@ -110,7 +110,7 @@ trait MainModelTrait {
     public function update( array $data )
     {
         if(!$this->get()){
-            throw new Exception('记录不存在');
+            throw new Exception(self::mainModel()->getTable().'表'.$this->uuid.'记录不存在');
         }
         if(!isset($data['id']) || !$data['id']){
             $data['id'] = $this->uuid;
@@ -154,7 +154,7 @@ trait MainModelTrait {
     public function delete()
     {
         if(!$this->get()){
-            throw new Exception('记录不存在');
+            throw new Exception(self::mainModel()->getTable().'表'.$this->uuid.'记录不存在');
         }
         
         return self::mainModel()->where('id',$this->uuid)->delete( );
