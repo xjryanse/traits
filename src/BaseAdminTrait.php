@@ -188,6 +188,32 @@ trait BaseAdminTrait
         return $this->dataReturn('数据删除',$res);
     }
     /**
+     * TODO：待完善20201112：公共联表删除接口
+     */
+    protected function commUniDel()
+    {
+        //取请求字段内容
+        $id               = Request::post('id','');
+        if( !$id ) {
+            return $this->errReturn( 'id必须' );
+        }
+        $info               = $this->columnInfo;
+        if( !$info['uni_del'] ) {
+            return $this->errReturn( $this->columnInfo['table_name'].'不允许联表删除');
+        }
+
+        Db::startTrans();
+        //表名取服务类
+        $class  = DbOperate::getService( $info['table_name'] );
+        $res    = $class::getInstance( $id )->delete( );
+        //取联表的信息
+        
+        
+        
+        Db::commit();
+        return $this->dataReturn('数据删除');
+    }
+    /**
      * 公共保存接口
      */
     protected function commSave()
