@@ -25,6 +25,23 @@ trait MainModelTrait {
         
         return $method .'不存在';
     }    
+    /**
+     * 缓存数据更新
+     */
+    protected static function _cacheUpdate( $id )
+    {
+        self::getInstance( $id )->get(0);
+    }
+    /**
+     * 获取缓存key
+     * @param type $id
+     * @return type
+     */
+    protected static function _cacheKey( $id )
+    {
+        $table = self::mainModel()->getTable();
+        return $table.$id;
+    }
 
     /**************************操作方法********************************/
     public static function save( array $data)
@@ -43,8 +60,11 @@ trait MainModelTrait {
         }
         $data['create_time'] = date('Y-m-d H:i:s');
         $data['update_time'] = date('Y-m-d H:i:s');
-
-        return self::mainModel()->create( $data );
+        $res = self::mainModel()->create( $data );
+        if($res){
+            self::_cacheUpdate($res['id']);
+        }
+        return $res;
     }
     /*
      * 批量保存
@@ -73,7 +93,13 @@ trait MainModelTrait {
             $tmpArr[] = $tmpData ;
         }
         //saveAll方法新增数据默认会自动识别数据是需要新增还是更新操作，当数据中存在主键的时候会认为是更新操作，如果你需要带主键数据批量新增，可以使用下面的方式
-        return self::mainModel()->saveAll( $tmpArr ,false );
+        $res = self::mainModel()->saveAll( $tmpArr ,false );
+        foreach( $tmpArr as $v){
+            if(isset($v['id']) && $v['id']){
+                self::_cacheUpdate($v['id']);
+            }
+        }
+        return $res;
     }
     /**
      * 关联表数据保存
@@ -120,7 +146,11 @@ trait MainModelTrait {
         }
         $data['update_time'] = date('Y-m-d H:i:s');
 
-        return self::mainModel()->update( $data );
+        $res = self::mainModel()->update( $data );
+        if($res){
+            self::_cacheUpdate( $this->uuid );
+        }
+        return $res;
     }
     /*
      * 设定字段的值
@@ -148,7 +178,12 @@ trait MainModelTrait {
         }
         $con[] = [ $key ,'=',$preValue];
         $con[] = [ 'id' ,'=',$this->uuid ];
-        return self::mainModel()->where( $con )->update([$key=>$aftValue]);
+        $res = self::mainModel()->where( $con )->update([$key=>$aftValue]);
+        if($res){
+            self::_cacheUpdate( $this->uuid );
+        }
+        //更新缓存
+        return $res;
     }
     
     public function delete()
@@ -156,8 +191,11 @@ trait MainModelTrait {
         if(!$this->get()){
             throw new Exception(self::mainModel()->getTable().'表'.$this->uuid.'记录不存在');
         }
-        
-        return self::mainModel()->where('id',$this->uuid)->delete( );
+        $res = self::mainModel()->where('id',$this->uuid)->delete( );
+        if($res){
+            self::_cacheUpdate( $this->uuid );
+        }        
+        return $res;
     }    
     /**************************查询方法********************************/
     public static function lists( $con = [],$order='',$field="*")
@@ -182,8 +220,7 @@ trait MainModelTrait {
         if(self::mainModel()->hasField('app_id')){
             $con[] = ['app_id','=',session(SESSION_APP_ID)];
         }
-//        dump(self::mainModel()->hasField('app_id'));
-//        return self::mainModel()->where( $con )->order($order)->cache(2)->paginate( intval($perPage) );
+
         $res = self::mainModel()->where( $con )->order($order)->cache(2)->paginate( intval($perPage) );
         return $res ? $res->toArray() : [] ;        
     }    
@@ -281,10 +318,15 @@ trait MainModelTrait {
      */
     public function get( $cache = 5 )
     {
-        $inst = self::mainModel()->where('id',$this->uuid);
-        return $cache 
-                ? $inst->cache( $cache )->find() 
-                : $inst->find();
+        if( $cache && cache(self::_cacheKey($this->uuid)) ){
+            return cache(self::_cacheKey($this->uuid));
+        }
+        $res = self::mainModel()->where('id',$this->uuid)->cache( $cache )->find();
+        //存缓存
+        if($res){
+            cache(self::_cacheKey($this->uuid),$res);
+        }
+        return $res;
     }
     
     public function info( $cache = 5  )
