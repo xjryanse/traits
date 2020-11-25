@@ -4,6 +4,7 @@ namespace xjryanse\traits;
 use think\Db;
 use think\facade\Request;
 use xjryanse\logic\DbOperate;
+use xjryanse\logic\Sql;
 use xjryanse\system\logic\ColumnLogic;
 use xjryanse\system\logic\ExportLogic;
 
@@ -298,23 +299,28 @@ trait BaseAdminTrait
             if($v['type'] == 'dynenum'){
                 $v['option'] = $v['option']['option'];
             }
-            //枚举项导出
-            if( in_array($v['type'],['enum','dynenum']) ){
-                $str = "(CASE ". $v['name'] ;
-                foreach( $v['option'] as $kk=>$vv){
-                    $str .= " WHEN '". $kk ."' THEN '". $vv  ."'";
-                }
-                $str .= " ELSE '' END) as `".$v['label'].'`';
-                $fields[] = $str;
+            if( in_array($v['type'],[ FR_COL_TYPE_CHECK ]) ){
+                $option = $v['option'];
+                $tmpOption = is_array($option['option']) ? $option['option'] : $option['option']->toArray(); 
+                $keyValue = array_column($tmpOption, $option['value'],$option['key']);
+                //组建groupConcat条件
+                $str = Sql::buildGroupConcat(  $option['to_table']
+                        , " user_id = `". $info['table_name']."`.id "
+                        , Sql::buildCaseWhen($option['to_field'], $keyValue, $v['label'])
+                        , $v['label']);
+            } else if( in_array($v['type'],['enum','dynenum']) ){
+                //枚举项导出                
+                $str = Sql::buildCaseWhen($v['name'], $v['option'], $v['label']) ;
             } else {
-                $fields[] = ' concat('. $v['name'].",'\t') as `".$v['label'].'`';
+                $str = ' concat('. $v['name'].",'\t') ";
             }
+            $fields[] = $str . "as `".$v['label']."`";
         }
 
         $field = implode(',',$fields);
         //请求本地进行导出操作
         $sql = Db::table( $this->columnInfo['table_name'] ) ->where( $con ) ->field( $field ) ->buildSql();
-        
+
         $fileName = ExportLogic::getInstance()->exportToCsv($sql);
         
         return $this->redirect( Request::domain().'/Uploads/Download/CanDelete/'.$fileName );
