@@ -5,6 +5,7 @@ use think\Db;
 use think\facade\Request;
 use xjryanse\logic\DbOperate;
 use xjryanse\logic\Sql;
+use xjryanse\logic\Arrays;
 use xjryanse\system\logic\ColumnLogic;
 use xjryanse\system\logic\ExportLogic;
 use xjryanse\system\service\SystemColumnListService;
@@ -48,6 +49,13 @@ trait BaseAdminTrait
         $this->assign( 'admTableId', $this->admTableId );
     }
     /**
+     * 查询条件缓存key：数据查询时存，数据导出时用
+     */
+    private function conditionCacheKey()
+    {
+        return Request::module().Request::controller().'_con';
+    }
+    /**
      * 公共列表页
      */
     protected function commList( $cond = [])
@@ -85,7 +93,7 @@ trait BaseAdminTrait
         
         $this->debug( '查询条件con',$con );
         //查询条件缓存（用于导出）
-        session(Request::module().Request::controller().'_con',$con);
+        session($this->conditionCacheKey(),$con);
         //获取分页列表
         $perPage        = Request::param( 'per_page', 20 );
         $class          = DbOperate::getService( $info['table_name'] );
@@ -270,7 +278,7 @@ trait BaseAdminTrait
     
     protected function commExport()
     {
-        $con = session(Request::module().Request::controller().'_con' );
+        $con = session( $this->conditionCacheKey() );
         //字段
         $info = $this->columnInfo;
 
