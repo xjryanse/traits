@@ -7,6 +7,7 @@ use xjryanse\logic\DbOperate;
 use xjryanse\logic\Sql;
 use xjryanse\system\logic\ColumnLogic;
 use xjryanse\system\logic\ExportLogic;
+use xjryanse\system\service\SystemColumnListService;
 
 /**
  * 后台系统管理复用，一般需依赖一堆类库
@@ -93,22 +94,10 @@ trait BaseAdminTrait
 
         //添加额外的数据
         foreach($list['data'] as &$vv){
-            //role_id,access_id等类型
-            foreach( $this->columnInfo['listInfo'] as $v){
-                //复选框
-                if($v['type'] == 'check'){
-                    $con1   = [];
-                    $con1[] = [$v['option']['main_field'],'=',$vv['id']];
-                    $rr = ColumnLogic::dynamicColumn($v['option']['to_table'], $v['name'], 'id',$con1);
-                    $vv[$v['name']] = array_values($rr);
-                }
-                //上传图片
-                if($v['type'] == 'uplimg'){
-                   
-                }
-            }
+            //根据不同字段类型，映射不同类库进行数据转换
+            $vv = $this->commDataInfo( $vv , $this->columnInfo['listInfo'] );
         }
-        
+
         return $list;
     }
     
@@ -149,15 +138,7 @@ trait BaseAdminTrait
         $class  = DbOperate::getService( $info['table_name'] );
         $res    = $class::getInstance( $id )->get( );
         
-        foreach( $this->columnInfo['listInfo'] as $v){
-            if( in_array( $v['type'],[ FR_COL_TYPE_CHECK,FR_COL_TYPE_DYNTREE]) ){
-//                dump($v);
-                $con1   = [];
-                $con1[] = [$v['option']['main_field'],'=',$res['id']];
-                $rr = ColumnLogic::dynamicColumn($v['option']['to_table'], $v['name'], 'id',$con1);
-                $res[$v['name']] = array_values($rr);
-            }
-        }
+        $this->commDataInfo( $res , $this->columnInfo['listInfo'] );
 
         $this->assign('row', $res );
         //表单类型：添加
@@ -256,6 +237,8 @@ trait BaseAdminTrait
 
         return $this->dataReturn('数据更新',$res);      
     }
+    
+    
     /*
      * 中间表数据保存
      */
@@ -499,5 +482,19 @@ trait BaseAdminTrait
         }
         return $data;
     }
-    
+    /**
+     * 将查询出来的数据，根据各字段类型提取详情
+     * @param type $data
+     * @param type $listInfo    columnInfo 的 listInfo 字段
+     * @return type
+     */
+    protected function commDataInfo( &$data, $listInfo )
+    {
+        //role_id,access_id等类型
+        foreach( $listInfo as $v){
+            //根据不同字段类型，映射不同类库进行数据转换
+            $data[$v['name']] = SystemColumnListService::getData( $v['type'] , $data, $v );
+        }
+        return $data;
+    }
 }
