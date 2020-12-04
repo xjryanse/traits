@@ -297,7 +297,7 @@ trait MainModelTrait {
         if(self::mainModel()->hasField('app_id')){
             $con[] = ['app_id','=',session(SESSION_APP_ID)];
         }
-        return self::mainModel()->where( $con )->cache(2)->count(  );
+        return self::mainModel()->where( $con )->count(  );
     }    
     /**
      * 条件计数
@@ -309,7 +309,7 @@ trait MainModelTrait {
         if(self::mainModel()->hasField('app_id')){
             $con[] = ['app_id','=',session(SESSION_APP_ID)];
         }
-        return self::mainModel()->where( $con )->cache(2)->sum( $field );
+        return self::mainModel()->where( $con )->sum( $field );
     }    
     /**
      * 
