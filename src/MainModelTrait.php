@@ -42,7 +42,21 @@ trait MainModelTrait {
         $table = self::mainModel()->getTable();
         return $table.$id;
     }
-
+    //公共的数据过滤条件
+    protected static function commCondition()
+    {
+        $con    = [];
+        //应用id
+        if( self::mainModel()->hasField('app_id') ){
+            $con[] = ['app_id','=',session(SESSION_APP_ID)];
+        }        
+        //公司id
+        if( self::mainModel()->hasField('company_id') && session( SESSION_COMPANY_ID ) ){
+            $con[] = ['company_id','=',session( SESSION_COMPANY_ID )];
+        }
+        
+        return $con;
+    }
     /**************************操作方法********************************/
     public static function save( array $data)
     {
@@ -200,13 +214,11 @@ trait MainModelTrait {
     /**************************查询方法********************************/
     public static function lists( $con = [],$order='',$field="*")
     {
-        if(self::mainModel()->hasField('app_id')){
-            $con[] = ['app_id','=',session(SESSION_APP_ID)];
-        }
+        $conAll = array_merge( $con ,self::commCondition() );
         if( !$order && self::mainModel()->hasField('sort')){
             $order = "sort";
         }
-        return self::mainModel()->where( $con )->order($order)->field($field)->cache(2)->select();
+        return self::mainModel()->where( $conAll )->order($order)->field($field)->cache(2)->select();
     }
     /**
      * 分页的查询
@@ -217,11 +229,9 @@ trait MainModelTrait {
      */
     public static function paginate( $con = [],$order='',$perPage=10)
     {
-        if(self::mainModel()->hasField('app_id')){
-            $con[] = ['app_id','=',session(SESSION_APP_ID)];
-        }
+        $conAll = array_merge( $con ,self::commCondition() );
 
-        $res = self::mainModel()->where( $con )->order($order)->cache(2)->paginate( intval($perPage) );
+        $res = self::mainModel()->where( $conAll )->order($order)->cache(2)->paginate( intval($perPage) );
         return $res ? $res->toArray() : [] ;        
     }    
     /**
@@ -231,14 +241,12 @@ trait MainModelTrait {
      */
     public static function listsCompany( $con = [],$order='',$field="*")
     {
-        if(self::mainModel()->hasField('app_id')){
-            $con[] = ['app_id','=',session(SESSION_APP_ID)];
-        }
-        $con[] = ['company_id','=',session(SESSION_COMPANY_ID)];
+        $conAll = array_merge( $con ,self::commCondition() );
+        
         if( !$order && self::mainModel()->hasField('sort')){
             $order = "sort";
         }
-        return self::mainModel()->where( $con )->order($order)->field($field)->cache(2)->select();
+        return self::mainModel()->where( $conAll )->order($order)->field($field)->cache(2)->select();
     }
     
     /**
