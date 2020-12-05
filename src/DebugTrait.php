@@ -2,6 +2,7 @@
 namespace xjryanse\traits;
 
 use think\facade\Request;
+use Exception;
 /**
  * 调试复用
  */
@@ -23,5 +24,12 @@ trait DebugTrait
     {
         $debug = Request::param('debug','');
         return $debug == 'xjryanse';
+    }
+    /**
+     * 测试时抛异常，便利数据回滚
+     */
+    public static function testThrow()
+    {
+        throw new Exception('测试中……');
     }
 }
