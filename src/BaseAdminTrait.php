@@ -211,7 +211,6 @@ trait BaseAdminTrait
         $info               = $this->columnInfo;
         //数据转换
         $data = $this->commDataCov( $postData , $info);
-        
         //表名取服务类
         $class  = DbOperate::getService( $info['table_name'] );
         $res    = $class::save( $data );
@@ -229,11 +228,10 @@ trait BaseAdminTrait
     protected function commUpdate()
     {
         //取请求字段内容
-        $postData           = Request::post();  
+        $postData           = Request::post();
         $info               = $this->columnInfo;
         //数据转换
         $data = $this->commDataCov( $postData , $info);
-
         //表名取服务类
         $class  = DbOperate::getService( $info['table_name'] );
 
@@ -255,22 +253,8 @@ trait BaseAdminTrait
             if(!isset($data[$v['name']])){
                 continue;
             }
-            //复选框，动态树
-            if( in_array($v['type'],[FR_COL_TYPE_CHECK, FR_COL_TYPE_DYNTREE ])){
-                $con1   = [];
-                $con1[] = [$v['option']['main_field'],'=', $id ];
-                //先删再写
-                $class = DbOperate::getService( $v['option']['to_table'] );
-                $class::mainModel()->where( $con1 )->delete();
-                foreach($data[$v['name']] as $vv){
-                    //写资源
-                    $tmpData = [];
-                    $tmpData[$v['option']['main_field']] = $id;
-                    $tmpData[$v['option']['to_field']] = $vv;
-                    //TODO优化为批量保存
-                    $class::save( $tmpData );
-                }
-            }
+            //中间表数据保存
+            SystemColumnListService::saveData( $v['type'] , $data, $v );
         }
     }
     
