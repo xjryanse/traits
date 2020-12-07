@@ -1,6 +1,7 @@
 <?php
 namespace xjryanse\traits;
 
+use xjryanse\user\logic\AuthLogic;
 use Exception;
 /**
  * 主模型复用
@@ -45,14 +46,12 @@ trait MainModelTrait {
     //公共的数据过滤条件
     protected static function commCondition()
     {
-        $con    = [];
+        $con    = session(SESSION_USER_ID) 
+                ? AuthLogic::dataCon( session(SESSION_USER_ID) , self::mainModel()->getTable())
+                : [] ;
         //应用id
         if( self::mainModel()->hasField('app_id') ){
             $con[] = ['app_id','=',session(SESSION_APP_ID)];
-        }        
-        //公司id
-        if( self::mainModel()->hasField('company_id') && session( SESSION_COMPANY_ID ) ){
-            $con[] = ['company_id','=',session( SESSION_COMPANY_ID )];
         }
         
         return $con;
@@ -241,6 +240,10 @@ trait MainModelTrait {
      */
     public static function listsCompany( $con = [],$order='',$field="*")
     {
+        //公司id
+        if( self::mainModel()->hasField('company_id') && session( SESSION_COMPANY_ID ) ){
+            $con[] = ['company_id','=',session( SESSION_COMPANY_ID )];
+        }
         $conAll = array_merge( $con ,self::commCondition() );
         
         if( !$order && self::mainModel()->hasField('sort')){

@@ -145,13 +145,11 @@ trait BaseAdminTrait
         //表名取服务类
         $class  = DbOperate::getService( $info['table_name'] );
         $res    = $class::getInstance( $id )->get( );
-        
-        $this->commDataInfo( $res , $this->columnInfo['listInfo'] );
 
-        $this->assign('row', $res );
+        $resp = $this->commDataInfo( $res , $this->columnInfo['listInfo'] );
+        $this->assign('row', $resp );
         //表单类型：添加
         $this->assign('formType', 'edit');
-        $this->debug('row', $res );
 
         $ajaxUrl = isset($header['edit_ajax_url']) && $header['edit_ajax_url'] 
                 ? $header['edit_ajax_url']
