@@ -117,8 +117,9 @@ trait BaseAdminTrait
         $header = $this->commHeader();
 //        dump($header);
         //请求的参数，带入表单
-        $data = Request::param();
-        $this->assign('row', $data);
+        $data   = Request::param();
+        $row    = $this->commDataInfo( $data , $this->columnInfo['listInfo'] );        
+        $this->assign('row', $row);
         //表单类型：添加
         $this->assign('formType', 'add');
         $this->debug('row', $data );
@@ -217,7 +218,7 @@ trait BaseAdminTrait
         
         if(isset($res['id'])){
             //中间表数据保存
-            $this->midSave( $this->columnInfo , $res['id'] ,$data );
+            $this->midSave( $this->columnInfo , $res['id'] ,$res );
         }
         return $this->dataReturn('数据保存',$res);        
     }
@@ -394,7 +395,7 @@ trait BaseAdminTrait
             $resp   = $class::save( $res );
             // 提交事务
             Db::commit();
-            return $this->succReturn('数据复制',$resp);
+            return $this->dataReturn('数据复制',$resp);
         } catch (\Exception $e) {
             // 回滚事务
             Db::rollback();
@@ -482,6 +483,10 @@ trait BaseAdminTrait
     {
         //role_id,access_id等类型
         foreach( $listInfo as $v){
+            //非新增且非编辑的字段不处理
+            if(!$v['is_add'] && !$v['is_edit']){
+                continue;
+            }
             //根据不同字段类型，映射不同类库进行数据转换
             $data[$v['name']] = SystemColumnListService::getData( $v['type'] , $data, $v );
         }

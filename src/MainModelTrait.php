@@ -332,7 +332,7 @@ trait MainModelTrait {
         if( $cache && cache(self::_cacheKey($this->uuid)) ){
             return cache(self::_cacheKey($this->uuid));
         }
-        $res = self::mainModel()->where('id',$this->uuid)->cache( $cache )->find();
+        $res = self::mainModel()->where('id',$this->uuid)->find();
         //存缓存
         if($res){
             cache(self::_cacheKey($this->uuid),$res);
