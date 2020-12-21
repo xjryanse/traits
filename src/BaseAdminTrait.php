@@ -5,11 +5,12 @@ use think\Db;
 use think\facade\Request;
 use xjryanse\logic\DbOperate;
 use xjryanse\logic\Sql;
-use xjryanse\logic\Arrays;
+use xjryanse\logic\Arrays2d;
 use xjryanse\system\logic\ColumnLogic;
 use xjryanse\system\logic\ExportLogic;
+use xjryanse\system\logic\ImportLogic;
 use xjryanse\system\service\SystemColumnListService;
-
+use xjryanse\system\service\SystemFileService;
 /**
  * 后台系统管理复用，一般需依赖一堆类库
  */
@@ -258,7 +259,10 @@ trait BaseAdminTrait
             SystemColumnListService::saveData( $v['type'] , $data, $v );
         }
     }
-    
+    /**
+     * 公共导出逻辑
+     * @return type
+     */
     protected function commExport()
     {
         $con = session( $this->conditionCacheKey() );
@@ -299,6 +303,41 @@ trait BaseAdminTrait
         
         return $this->redirect( Request::domain().'/Uploads/Download/CanDelete/'.$fileName );
     }
+    /**
+     * 公共导入逻辑
+     * @return type
+     */
+    protected function commImport()
+    {
+        $column = ColumnLogic::getImportFields($this->columnInfo);
+        //表单提交的字段
+        $fieldId = Request::param('importFieldId',0);
+        if(!$fieldId){
+            return $this->errReturn( '未指定文件' );
+        }
+        //数据
+        $resData    = ImportLogic::fileGetArray( $fieldId ,$column );
+        
+        //写入
+        Db::startTrans();
+        try {
+//            $preInputData = $this->getPreImportData();
+//            foreach($resData as &$v){
+//                $v = array_merge( $preInputData , $v );
+//            }
+            $class  = DbOperate::getService( $this->columnInfo['table_name'] );
+
+            $res    = $class::saveAll($resData);
+            // 提交事务
+            Db::commit();
+            return $this->succReturn('数据导入成功'.count($res).'条',$res);        
+        } catch (\Exception $e) {
+            // 回滚事务
+            Db::rollback();
+            return $this->throwMsg($e);
+        }
+    }    
+    
     /**
      * 数据表头信息
      */
@@ -466,7 +505,7 @@ trait BaseAdminTrait
         //数据转换
         foreach( $data as $k=>&$v){
             foreach( $columnInfo['listInfo'] as $field){
-                if( $field['type'] == 'uplimage' &&  $k == $field['name'] && isset($v['id'] ) ) {
+                if( in_array( $field['type'],[FR_COL_TYPE_UPLIMAGE,FR_COL_TYPE_UPLFILE]) &&  $k == $field['name'] && isset($v['id'] ) ) {
                     $v = $v['id'];
                 }
             }

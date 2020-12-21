@@ -174,6 +174,32 @@ trait MainModelTrait {
     {
         return $this->update([$key=>$value]);
     }
+    /**
+     * 字段名取值
+     * @param type $fieldName   字段名
+     * @param type $default     默认值
+     * @return type
+     */
+    public function fieldValue( $fieldName, $default='')
+    {
+        $info = $this->get();
+        return ($info && isset($info[ $fieldName ])) 
+            ? $info[ $fieldName ] 
+            : $default;
+    }
+    /**
+     * 获取f开头的驼峰方法名字段信息
+     * @param type $functionName  方法名，一般__FUNCTION__即可
+     * @param type $prefix          前缀
+     * @return type
+     */
+    public function getFFieldValue( $functionName ,$prefix="f_")
+    {
+        //驼峰转下划线，再去除前缀
+        $fieldName = ltrim(uncamelize( $functionName ),$prefix);
+        //调用MainModelTrait中的字段值方法
+        return $this->fieldValue($fieldName);
+    }    
 
     /*
      * 设定字段的值
@@ -232,7 +258,7 @@ trait MainModelTrait {
 
         $res = self::mainModel()->where( $conAll )->order($order)->cache(2)->paginate( intval($perPage) );
         return $res ? $res->toArray() : [] ;        
-    }    
+    }
     /**
      * 自带当前公司的列表查询
      * @param type $con
