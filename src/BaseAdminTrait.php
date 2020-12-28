@@ -5,12 +5,11 @@ use think\Db;
 use think\facade\Request;
 use xjryanse\logic\DbOperate;
 use xjryanse\logic\Sql;
-use xjryanse\logic\Arrays2d;
 use xjryanse\system\logic\ColumnLogic;
 use xjryanse\system\logic\ExportLogic;
 use xjryanse\system\logic\ImportLogic;
 use xjryanse\system\service\SystemColumnListService;
-use xjryanse\system\service\SystemFileService;
+
 /**
  * 后台系统管理复用，一般需依赖一堆类库
  */
@@ -31,7 +30,9 @@ trait BaseAdminTrait
         //表的字段信息
         $controller             = strtolower( Request::controller() );
         $admKey                 = Request::param('admKey','');
-        $this->columnInfo       = ColumnLogic::defaultColumn( $controller, $admKey );
+        //defaultColumn 方法中，会提取cateFieldName的key，来进行过滤字段
+        $cateFieldValues        = Request::param();
+        $this->columnInfo       = ColumnLogic::defaultColumn( $controller, $admKey ,'', $cateFieldValues);
         //对应表名
         $this->admTable         = isset($this->columnInfo['table_name']) ? $this->columnInfo['table_name'] : '';
         //对应表id
@@ -221,7 +222,7 @@ trait BaseAdminTrait
             //中间表数据保存
             $this->midSave( $this->columnInfo , $res['id'] ,$res );
         }
-        return $this->dataReturn('数据保存',$res);        
+        return $this->dataReturn('数据保存',$res);
     }
 
     /**
@@ -440,6 +441,16 @@ trait BaseAdminTrait
             Db::rollback();
             return $this->throwMsg($e);
         }
+    }
+    /**
+     * 公共保存接口
+     */
+    protected function commTemplate()
+    {
+        $info       = $this->columnInfo;
+        return $info['import_tpl_id'] 
+                ? $this->redirect($info['import_tpl_id']['file_path']) 
+                : '';
     }
     /**
      * 年月渲染

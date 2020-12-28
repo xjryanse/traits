@@ -196,7 +196,8 @@ trait MainModelTrait {
     public function getFFieldValue( $functionName ,$prefix="f_")
     {
         //驼峰转下划线，再去除前缀
-        $fieldName = ltrim(uncamelize( $functionName ),$prefix);
+        $pattern = '/^'. $prefix .'/i';
+        $fieldName = preg_replace($pattern, '', uncamelize( $functionName ));
         //调用MainModelTrait中的字段值方法
         return $this->fieldValue($fieldName);
     }    
