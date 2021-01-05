@@ -147,7 +147,7 @@ trait BaseAdminTrait
         $info = $this->columnInfo;
         //表名取服务类
         $class  = DbOperate::getService( $info['table_name'] );
-        $res    = $class::getInstance( $id )->get( );
+        $res    = $class::getInstance( $id )->info( );
 
         $resp = $this->commDataInfo( $res , $this->columnInfo['listInfo'] );
         $this->assign('row', $resp );
@@ -175,7 +175,9 @@ trait BaseAdminTrait
         $info               = $this->columnInfo;
         //表名取服务类
         $class  = DbOperate::getService( $info['table_name'] );
+        Db::startTrans();
         $res    = $class::getInstance( $data['id'] )->delete( );
+        Db::commit();
         return $this->dataReturn('数据删除',$res);
     }
     /**

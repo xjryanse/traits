@@ -56,8 +56,10 @@ trait MainModelTrait {
         
         return $con;
     }
-    /**************************操作方法********************************/
-    public static function save( array $data)
+    /**
+     * 预保存数据
+     */
+    protected static function preSaveData( &$data )
     {
         if(!isset($data['id'])|| !$data['id']){
             $data['id'] = self::mainModel()->newId();
@@ -73,11 +75,69 @@ trait MainModelTrait {
         }
         $data['create_time'] = date('Y-m-d H:i:s');
         $data['update_time'] = date('Y-m-d H:i:s');
+        return $data;
+    }
+    /*****公共保存【外部有调用】*****/
+    protected static function commSave( $data ){
+        //预保存数据
+        self::preSaveData($data);
+        //保存
         $res = self::mainModel()->create( $data );
         if($res){
             self::_cacheUpdate($res['id']);
         }
+        return $res;        
+    }
+    /**
+     * 公共更新【外部有调用】
+     * @param array $data
+     * @return type
+     * @throws Exception
+     */
+    protected function commUpdate( array $data )
+    {
+        $info = $this->get();
+        if(!$info){
+            throw new Exception(self::mainModel()->getTable().'表'.$this->uuid.'记录不存在');
+        }
+        if(isset($info['is_lock']) && $info['is_lock']){
+            throw new Exception(self::mainModel()->getTable().'表'.$this->uuid.'记录已锁定，确需更改请联系管理员解锁');
+        }
+        if(!isset($data['id']) || !$data['id']){
+            $data['id'] = $this->uuid;
+        }
+        if( session(SESSION_USER_ID) && !isset($data['updater']) ){
+            $data['updater'] = session(SESSION_USER_ID);
+        }
+        $data['update_time'] = date('Y-m-d H:i:s');
+
+        $res = self::mainModel()->update( $data );
+        if($res){
+            self::_cacheUpdate( $this->uuid );
+        }
         return $res;
+    }
+    /**
+     * 公共删除【外部有调用】
+     * @return type
+     * @throws Exception
+     */
+    protected function commDelete()
+    {
+        if(!$this->get()){
+            throw new Exception(self::mainModel()->getTable().'表'.$this->uuid.'记录不存在');
+        }
+        $res = self::mainModel()->where('id',$this->uuid)->delete( );
+        if($res){
+            self::_cacheUpdate( $this->uuid );
+        }        
+        return $res;
+    }
+    
+    /**************************操作方法********************************/
+    public static function save( array $data)
+    {
+        return self::commSave($data);
     }
     /*
      * 批量保存
@@ -87,23 +147,8 @@ trait MainModelTrait {
         $tmpArr = [];
         foreach( $data as $v){
             $tmpData        = $v ;
-            if(!isset($tmpData['id'])|| !$tmpData['id']){
-                $tmpData['id'] = self::mainModel()->newId();
-            }
-            if( session(SESSION_COMPANY_ID) && !isset($tmpData['company_id']) ){
-                $tmpData['company_id'] = session(SESSION_COMPANY_ID);
-            }
-            if( session(SESSION_APP_ID) && !isset($tmpData['app_id']) ){
-                $tmpData['app_id'] = session(SESSION_APP_ID);
-            }
-            if( session(SESSION_USER_ID) && !isset($tmpData['creater']) ){
-                $tmpData['creater'] = session(SESSION_USER_ID);
-            }
-
-            $tmpData['create_time'] = date('Y-m-d H:i:s');
-            $tmpData['update_time'] = date('Y-m-d H:i:s');
-            
-            $tmpArr[] = $tmpData ;
+            //预保存数据
+            $tmpArr[] = self::preSaveData( $tmpData ); ;
         }
         //saveAll方法新增数据默认会自动识别数据是需要新增还是更新操作，当数据中存在主键的时候会认为是更新操作，如果你需要带主键数据批量新增，可以使用下面的方式
         $res = self::mainModel()->saveAll( $tmpArr ,false );
@@ -148,22 +193,8 @@ trait MainModelTrait {
      */
     public function update( array $data )
     {
-        if(!$this->get()){
-            throw new Exception(self::mainModel()->getTable().'表'.$this->uuid.'记录不存在');
-        }
-        if(!isset($data['id']) || !$data['id']){
-            $data['id'] = $this->uuid;
-        }
-        if( session(SESSION_USER_ID) && !isset($data['updater']) ){
-            $data['updater'] = session(SESSION_USER_ID);
-        }
-        $data['update_time'] = date('Y-m-d H:i:s');
-
-        $res = self::mainModel()->update( $data );
-        if($res){
-            self::_cacheUpdate( $this->uuid );
-        }
-        return $res;
+        //预保存数据
+        return $this->commUpdate($data);
     }
     /*
      * 设定字段的值
@@ -228,14 +259,7 @@ trait MainModelTrait {
     
     public function delete()
     {
-        if(!$this->get()){
-            throw new Exception(self::mainModel()->getTable().'表'.$this->uuid.'记录不存在');
-        }
-        $res = self::mainModel()->where('id',$this->uuid)->delete( );
-        if($res){
-            self::_cacheUpdate( $this->uuid );
-        }        
-        return $res;
+        return $this->commDelete();
     }    
     /**************************查询方法********************************/
     public static function lists( $con = [],$order='',$field="*")
