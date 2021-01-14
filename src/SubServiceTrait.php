@@ -13,8 +13,18 @@ trait SubServiceTrait {
      */
     public function getSubFieldData( )
     {
-        $info = self::mainModel()->where('id',$this->uuid)->field( implode(',',self::$subFields))->find();
-        return $info ? $info->toArray() : [];
+        //取了信息
+        $info = $this->get();
+        $res = [];
+        foreach(self::$subFields as $key=>$value){
+            if(is_numeric($key)){
+                $key = $value;
+            }
+            if(isset($info[$key])){
+                $res[ $value ] = $info[ $key ];
+            }
+        }
+        return $res;
     }
     
     /**
@@ -48,8 +58,9 @@ trait SubServiceTrait {
     {
         if(class_exists($subService) && method_exists($subService, 'getSubFieldData')){
             $subInfos = $subService::getInstance( $id )->getSubFieldData();
+            $subTableName = $subService::mainModel()->getTable();
             foreach($subInfos as $k=>$v){
-                $item->$k = $v;
+                $item[$subTableName.'.'.$k] = $v;
             }
         }
         return $item;        

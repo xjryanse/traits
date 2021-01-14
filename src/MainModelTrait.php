@@ -96,7 +96,7 @@ trait MainModelTrait {
      */
     protected function commUpdate( array $data )
     {
-        $info = $this->get();
+        $info = $this->get(0);
         if(!$info){
             throw new Exception(self::mainModel()->getTable().'表'.$this->uuid.'记录不存在');
         }
@@ -211,9 +211,9 @@ trait MainModelTrait {
      * @param type $default     默认值
      * @return type
      */
-    public function fieldValue( $fieldName, $default='')
+    public function fieldValue( $fieldName, $default='',$cache = 5)
     {
-        $info = $this->get();
+        $info = $this->get( $cache );
         return ($info && isset($info[ $fieldName ])) 
             ? $info[ $fieldName ] 
             : $default;
@@ -249,7 +249,8 @@ trait MainModelTrait {
         }
         $con[] = [ $key ,'=',$preValue];
         $con[] = [ 'id' ,'=',$this->uuid ];
-        $res = self::mainModel()->where( $con )->update([$key=>$aftValue]);
+        $res = $this->update([$key=>$aftValue]);
+//        $res = self::mainModel()->where( $con )->update([$key=>$aftValue]);
         if($res){
             self::_cacheUpdate( $this->uuid );
         }
@@ -262,13 +263,23 @@ trait MainModelTrait {
         return $this->commDelete();
     }    
     /**************************查询方法********************************/
-    public static function lists( $con = [],$order='',$field="*")
+    public static function commLists( $con = [],$order='',$field="*" )
     {
         $conAll = array_merge( $con ,self::commCondition() );
         if( !$order && self::mainModel()->hasField('sort')){
             $order = "sort";
         }
         return self::mainModel()->where( $conAll )->order($order)->field($field)->cache(2)->select();
+    }
+    
+    public static function lists( $con = [],$order='',$field="*")
+    {
+        return self::commLists($con, $order, $field)->each(function($item, $key){
+                //额外添加详情信息：固定为extraDetail方法
+                if(method_exists( __CLASS__, 'extraDetail')){
+                    self::extraDetail($item, $item->id);
+                }
+            });
     }
     /**
      * 分页的查询
@@ -280,9 +291,15 @@ trait MainModelTrait {
     public static function paginate( $con = [],$order='',$perPage=10)
     {
         $conAll = array_merge( $con ,self::commCondition() );
-
-        $res = self::mainModel()->where( $conAll )->order($order)->cache(2)->paginate( intval($perPage) );
-        return $res ? $res->toArray() : [] ;        
+        $res = self::mainModel()->where( $conAll )->order($order)->cache(2)
+                ->paginate( intval($perPage) )
+                ->each(function($item, $key){
+                    //额外添加详情信息：固定为extraDetail方法
+                    if(method_exists( __CLASS__, 'extraDetail')){
+                        self::extraDetail($item, $item->id);
+                    }
+                });
+        return $res ? $res->toArray() : [] ;                
     }
     /**
      * 自带当前公司的列表查询
@@ -394,6 +411,11 @@ trait MainModelTrait {
     public function info( $cache = 5  )
     {
         $info = self::mainModel()->where('id',$this->uuid)->cache( $cache )->find();
+        //额外添加详情信息：固定为extraDetail方法
+        if(method_exists( __CLASS__, 'extraDetail')){
+            self::extraDetail($info, $info['id']);
+        }
+
         return $info;
     }
     /**

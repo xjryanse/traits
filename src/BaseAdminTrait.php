@@ -27,17 +27,34 @@ trait BaseAdminTrait
      */
     protected function initAdminParamSet()
     {
-        //表的字段信息
-        $controller             = strtolower( Request::controller() );
-        $admKey                 = Request::param('admKey','');
         //defaultColumn 方法中，会提取cateFieldName的key，来进行过滤字段
         $cateFieldValues        = Request::param();
-        $this->columnInfo       = ColumnLogic::defaultColumn( $controller, $admKey ,'', $cateFieldValues);
+        $this->columnInfo       = $this->getColumnInfo( $cateFieldValues );
+        //编辑方法才去取
+        if(Request::action() == 'edit'){
+            $idGetInfo  = $this->commGet();
+            if($idGetInfo){
+                $this->columnInfo       = $this->getColumnInfo( $idGetInfo );
+            }
+        }
         //对应表名
         $this->admTable         = isset($this->columnInfo['table_name']) ? $this->columnInfo['table_name'] : '';
         //对应表id
         $this->admTableId       = isset($this->columnInfo['id']) ? $this->columnInfo['id'] : '';
     }
+    /**
+     * 
+     * @param type $cateFieldValues defaultColumn 方法中，会提取cateFieldName的key，来进行过滤字段
+     * @return type
+     */
+    protected function getColumnInfo( $cateFieldValues = [])
+    {
+        $controller             = strtolower( Request::controller() );
+        $admKey                 = Request::param('admKey','');
+
+        return ColumnLogic::defaultColumn( $controller, $admKey ,'', $cateFieldValues);
+    }
+    
     /**
      * 【2】初始化参数渲染
      */
@@ -67,7 +84,7 @@ trait BaseAdminTrait
             $list['columnInfo'] = $this->columnInfo;
             return $this->dataReturn('获取数据',$list);
         }
-        $this->assign('columnInfo',$this->columnInfo);
+//        $this->assign('columnInfo',$this->columnInfo);
         return $this->fetch( $this->template ? : 'common/list');
     }
     /*
@@ -134,22 +151,34 @@ trait BaseAdminTrait
         return $this->fetch( $this->template ? : 'common/add');
     }
     /**
+     * 取信息
+     * @return type
+     */
+    protected function commGet()
+    {
+        $id = Request::param('id',0);
+        if($id){
+            $info = $this->columnInfo;
+            //表名取服务类
+            $class  = DbOperate::getService( $info['table_name'] );
+            $res    = $class::getInstance( $id )->info( );
+        }
+        return $id && $res ? $res->toArray() : [];
+    }
+    /**
      * 公共编辑页
      */
     protected function commEdit()
     {
         $header = $this->commHeader();
-        $id = Request::param('id',0);
-        if( !$id ){
+        $res = $this->commGet();
+//        dump($res);
+        if( !$res ){
             return ;
         }
-
-        $info = $this->columnInfo;
-        //表名取服务类
-        $class  = DbOperate::getService( $info['table_name'] );
-        $res    = $class::getInstance( $id )->info( );
-
+        
         $resp = $this->commDataInfo( $res , $this->columnInfo['listInfo'] );
+
         $this->assign('row', $resp );
         //表单类型：添加
         $this->assign('formType', 'edit');
@@ -157,6 +186,7 @@ trait BaseAdminTrait
         $ajaxUrl = isset($header['edit_ajax_url']) && $header['edit_ajax_url'] 
                 ? $header['edit_ajax_url']
                 :'update';
+        //覆盖initAdminAssign中的方法，重新渲染字段信息：因有些字段会根据实际数据的类型进行过滤
         $this->assign('formUrl', url( $ajaxUrl ,$this->paramInherit) );
         $this->assign('btnName', '编辑' );
 
@@ -200,9 +230,6 @@ trait BaseAdminTrait
         $class  = DbOperate::getService( $info['table_name'] );
         $res    = $class::getInstance( $id )->delete( );
         //取联表的信息
-        
-        
-        
         Db::commit();
         return $this->dataReturn('数据删除');
     }
@@ -216,14 +243,15 @@ trait BaseAdminTrait
         $info               = $this->columnInfo;
         //数据转换
         $data = $this->commDataCov( $postData , $info);
+        Db::startTrans();
         //表名取服务类
         $class  = DbOperate::getService( $info['table_name'] );
         $res    = $class::save( $data );
-        
         if(isset($res['id'])){
             //中间表数据保存
             $this->midSave( $this->columnInfo , $res['id'] ,$res );
         }
+        Db::commit();
         return $this->dataReturn('数据保存',$res);
     }
 

@@ -77,7 +77,14 @@ trait WePubAuthTrait
         //用于微信回调后跳转
         session( SESSION_WEPUB_CALLBACK ,$url);
         //Oauth2Authorize
-        $this->redirect( $this->wxUrl['Connect']->Oauth2Authorize( $this->wePubAcid ) );
+        $oauthUrl = $this->wxUrl['Connect']->Oauth2Authorize( $this->wePubAcid );
+        if(Request::isAjax()){
+            header('Content-type: application/json');        
+            echo json_encode(['code' => 3001,"msg"=>'请授权登录',"data"=>$oauthUrl]); exit;
+        } else {
+            //非ajax请求，直接跳转链接
+            $this->redirect( $oauthUrl );
+        }
     }    
     
 
