@@ -63,7 +63,7 @@ trait WePubAuthTrait
         $this->wePubAppId        = $app->appid;
         $this->wePubAppSecret    = $app->secret;
         //②获取用户信息
-        $this->openid       = session('myOpenid') ? : "";
+        $this->openid       = session( SESSION_OPENID ) ? : Request::param('openid','');
         $this->wePubFans    = new Fans( $this->wePubAcid, $this->openid);
         $this->wxUrl        = $this->wePubFans->wxUrl;
     }

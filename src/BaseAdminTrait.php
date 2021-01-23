@@ -5,10 +5,12 @@ use think\Db;
 use think\facade\Request;
 use xjryanse\logic\DbOperate;
 use xjryanse\logic\Sql;
+use xjryanse\logic\ModelQueryCon;
 use xjryanse\system\logic\ColumnLogic;
 use xjryanse\system\logic\ExportLogic;
 use xjryanse\system\logic\ImportLogic;
 use xjryanse\system\service\SystemColumnListService;
+use xjryanse\system\service\SystemImportAsyncService;
 
 /**
  * 后台系统管理复用，一般需依赖一堆类库
@@ -98,9 +100,9 @@ trait BaseAdminTrait
         $info       = $this->columnInfo;
         
         $this->debug('xinxi',$info);
-        $fields     = ColumnLogic::getSearchFields($this->columnInfo);
+        $whereFields     = ColumnLogic::getSearchFields($this->columnInfo);
 
-        $con        = array_merge( $this->queryCon($uparam, $fields) ,$cond);
+        $con        = array_merge( ModelQueryCon::queryCon($uparam, $whereFields) ,$cond);
         //年月渲染，根据是否设置了字段来判断显示
         if($info['yearmonth_field']){
             $this->yearMonthAssign();
@@ -137,6 +139,13 @@ trait BaseAdminTrait
 //        dump($header);
         //请求的参数，带入表单
         $data   = Request::param();
+        //默认填写当前用户的字段
+        if(isset( $data['currentUserField'])){
+            $currentUserField = explode(',','currentUserField');
+            foreach( $currentUserField as $currentUserField){
+                $data[ $currentUserField ] = session(SESSION_USER_ID);
+            }
+        }        
         $row    = $this->commDataInfo( $data , $this->columnInfo['listInfo'] );        
         $this->assign('row', $row);
         //表单类型：添加
@@ -243,9 +252,9 @@ trait BaseAdminTrait
         $info               = $this->columnInfo;
         //数据转换
         $data = $this->commDataCov( $postData , $info);
-        Db::startTrans();
         //表名取服务类
         $class  = DbOperate::getService( $info['table_name'] );
+        Db::startTrans();
         $res    = $class::save( $data );
         if(isset($res['id'])){
             //中间表数据保存
@@ -261,16 +270,26 @@ trait BaseAdminTrait
     protected function commUpdate()
     {
         //取请求字段内容
-        $postData           = Request::post();
+        $postData           = Request::param();
         $info               = $this->columnInfo;
         //数据转换
         $data = $this->commDataCov( $postData , $info);
         //表名取服务类
         $class  = DbOperate::getService( $info['table_name'] );
-
-        $res = $class::getInstance( $data['id'] )->update( $data );
-        //中间表数据保存
-        $this->midSave( $this->columnInfo , $data['id'] ,$data );
+        //批量
+        $ids = Request::param('id','');
+        if(!is_array($ids)){
+            //兼容逗号传值，处理成数组
+            $ids = explode(',',$ids);
+        }
+        foreach($ids as $id){
+            $data['id'] = $id;
+            Db::startTrans();
+            $res = $class::getInstance( $data['id'] )->update( $data );
+            //中间表数据保存
+            $this->midSave( $this->columnInfo , $data['id'] ,$data );
+            Db::commit();
+        }
 
         return $this->dataReturn('数据更新',$res);      
     }
@@ -329,6 +348,12 @@ trait BaseAdminTrait
         $field = implode(',',$fields);
         //请求本地进行导出操作
         $sql = Db::table( $this->columnInfo['table_name'] ) ->where( $con ) ->field( $field ) ->buildSql();
+        if($this->isDebug()){
+            $this->debug('$con',$con);
+            $this->debug('$field',$field);
+            $this->debug('$sql',$sql);
+            exit;
+        }
 
         $fileName = ExportLogic::getInstance()->exportToCsv($sql);
         
@@ -340,33 +365,41 @@ trait BaseAdminTrait
      */
     protected function commImport()
     {
-        $column = ColumnLogic::getImportFields($this->columnInfo);
+        $headers = ColumnLogic::getImportFields($this->columnInfo);
         //表单提交的字段
-        $fieldId = Request::param('importFieldId',0);
-        if(!$fieldId){
+        $fileId = Request::param('importFileId',0);
+        if(!$fileId){
             return $this->errReturn( '未指定文件' );
         }
-        //数据
-        $resData    = ImportLogic::fileGetArray( $fieldId ,$column );
-        
-        //写入
-        Db::startTrans();
-        try {
-//            $preInputData = $this->getPreImportData();
-//            foreach($resData as &$v){
-//                $v = array_merge( $preInputData , $v );
-//            }
-            $class  = DbOperate::getService( $this->columnInfo['table_name'] );
+        $preInputData = Request::param();
+        //添加到导入任务
+        $data['cov_data'] = json_encode(ColumnLogic::getCovData( $this->columnInfo ),JSON_UNESCAPED_UNICODE);
 
-            $res    = $class::saveAll($resData);
-            // 提交事务
-            Db::commit();
-            return $this->succReturn('数据导入成功'.count($res).'条',$res);        
-        } catch (\Exception $e) {
-            // 回滚事务
-            Db::rollback();
-            return $this->throwMsg($e);
-        }
+        $res = SystemImportAsyncService::addTask($this->columnInfo['table_name'], $fileId, $headers, $preInputData ,$data);
+        //
+        return $this->succReturn('数据导入成功',$res);        
+        
+//        //数据
+//        $resData    = ImportLogic::fileGetArray( $fieldId ,$column );
+//        
+//        //写入
+//        Db::startTrans();
+//        try {
+////            $preInputData = $this->getPreImportData();
+////            foreach($resData as &$v){
+////                $v = array_merge( $preInputData , $v );
+////            }
+//            $class  = DbOperate::getService( $this->columnInfo['table_name'] );
+//
+//            $res    = $class::saveAll($resData);
+//            // 提交事务
+//            Db::commit();
+//            return $this->succReturn('数据导入成功'.count($res).'条',$res);        
+//        } catch (\Exception $e) {
+//            // 回滚事务
+//            Db::rollback();
+//            return $this->throwMsg($e);
+//        }
     }    
     
     /**

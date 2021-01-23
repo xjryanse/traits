@@ -2,6 +2,9 @@
 namespace xjryanse\traits;
 
 use xjryanse\user\logic\AuthLogic;
+use xjryanse\logic\DbOperate;
+use xjryanse\system\service\SystemFieldsInfoService;
+use xjryanse\system\service\SystemFieldsManyService;
 use Exception;
 /**
  * 主模型复用
@@ -73,16 +76,29 @@ trait MainModelTrait {
         if( session(SESSION_USER_ID) && !isset($data['creater'])){
             $data['creater'] = session(SESSION_USER_ID);
         }
+        //数据来源
+        if( session(SESSION_SOURCE) && !isset($data['source'])){
+            $data['source'] = session(SESSION_SOURCE);
+        }
         $data['create_time'] = date('Y-m-d H:i:s');
         $data['update_time'] = date('Y-m-d H:i:s');
         return $data;
     }
     /*****公共保存【外部有调用】*****/
     protected static function commSave( $data ){
-        //预保存数据
+        //预保存数据：id，app_id,company_id,creater,updater,create_time,update_time
         self::preSaveData($data);
+        //额外添加详情信息：固定为extraDetail方法
+        if(method_exists( __CLASS__, 'extraPreSave')){
+            self::extraPreSave( $data, $data['id']);      //注：id在preSaveData方法中生成
+        }
         //保存
         $res = self::mainModel()->create( $data );
+        //更新完后执行：类似触发器
+        if(method_exists( __CLASS__, 'extraAfterSave')){
+            self::extraAfterSave( $res, $data['id']);      
+        }
+        
         if($res){
             self::_cacheUpdate($res['id']);
         }
@@ -98,20 +114,26 @@ trait MainModelTrait {
     {
         $info = $this->get(0);
         if(!$info){
+//            return false;
             throw new Exception(self::mainModel()->getTable().'表'.$this->uuid.'记录不存在');
         }
         if(isset($info['is_lock']) && $info['is_lock']){
-            throw new Exception(self::mainModel()->getTable().'表'.$this->uuid.'记录已锁定，确需更改请联系管理员解锁');
+            throw new Exception(self::mainModel()->getTable().'表'.$this->uuid.'记录已锁定不可修改');
         }
         if(!isset($data['id']) || !$data['id']){
             $data['id'] = $this->uuid;
         }
-        if( session(SESSION_USER_ID) && !isset($data['updater']) ){
-            $data['updater'] = session(SESSION_USER_ID);
-        }
+        $data['updater'] = session(SESSION_USER_ID);
         $data['update_time'] = date('Y-m-d H:i:s');
-
+        //额外添加详情信息：固定为extraDetail方法；更新前执行
+        if(method_exists( __CLASS__, 'extraPreSave')){
+            self::extraPreSave( $data, $data['id']);      
+        }
         $res = self::mainModel()->update( $data );
+        //更新完后执行：类似触发器
+        if(method_exists( __CLASS__, 'extraAfterSave')){
+            self::extraAfterSave( $res, $data['id']);
+        }
         if($res){
             self::_cacheUpdate( $this->uuid );
         }
@@ -159,6 +181,33 @@ trait MainModelTrait {
         }
         return $res;
     }
+    /**
+     * 数据保存取id（自动识别是新增还是更新）
+     * @param type $data    
+     * @return type
+     */
+    protected static function commSaveGetId($data) {
+        $mainId = '';
+        if (isset($data['id']) && self::getInstance( $data['id'])->get()) {
+            $mainId = $data['id'];
+            //更新
+            $res = self::getInstance($data['id'])->update($data);
+        } else {
+            //新增
+            $res = self::save($data);
+            $mainId = $res['id'];
+        }
+
+        return $mainId;
+    }
+    /**
+     * 数据保存取id（自动识别是新增还是更新）
+     * @param type $data    
+     * @return type
+     */
+    public static function saveGetId( $data ){
+        return self::commSaveGetId($data);
+    }    
     /**
      * 关联表数据保存
      * @param type $mainField   主字段
@@ -263,7 +312,7 @@ trait MainModelTrait {
         return $this->commDelete();
     }    
     /**************************查询方法********************************/
-    public static function commLists( $con = [],$order='',$field="*" )
+    protected static function commLists( $con = [],$order='',$field="*" )
     {
         $conAll = array_merge( $con ,self::commCondition() );
         if( !$order && self::mainModel()->hasField('sort')){
@@ -281,6 +330,7 @@ trait MainModelTrait {
                 }
             });
     }
+    
     /**
      * 分页的查询
      * @param type $con
@@ -288,10 +338,12 @@ trait MainModelTrait {
      * @param type $perPage
      * @return type
      */
-    public static function paginate( $con = [],$order='',$perPage=10)
+    protected static function commPaginate( $con = [],$order='',$perPage=10,$having = '')
     {
         $conAll = array_merge( $con ,self::commCondition() );
-        $res = self::mainModel()->where( $conAll )->order($order)->cache(2)
+        $res = self::mainModel()->where( $conAll )->order($order)
+                ->having($having)
+                ->cache(2)
                 ->paginate( intval($perPage) )
                 ->each(function($item, $key){
                     //额外添加详情信息：固定为extraDetail方法
@@ -300,6 +352,18 @@ trait MainModelTrait {
                     }
                 });
         return $res ? $res->toArray() : [] ;                
+    }
+    
+    /**
+     * 分页的查询
+     * @param type $con
+     * @param type $order
+     * @param type $perPage
+     * @return type
+     */
+    public static function paginate( $con = [],$order='',$perPage=10,$having = '')
+    {
+        return self::commPaginate($con, $order, $perPage, $having);
     }
     /**
      * 自带当前公司的列表查询
@@ -390,12 +454,8 @@ trait MainModelTrait {
         }
         return self::mainModel()->where( $con )->sum( $field );
     }    
-    /**
-     * 
-     * @param type $cache   cache为0，直接读数据库
-     * @return type
-     */
-    public function get( $cache = 5 )
+    
+    public function commGet($cache = 5)
     {
         if( $cache && cache(self::_cacheKey($this->uuid)) ){
             return cache(self::_cacheKey($this->uuid));
@@ -405,10 +465,60 @@ trait MainModelTrait {
         if($res){
             cache(self::_cacheKey($this->uuid),$res);
         }
-        return $res;
+        return $res;        
+    }
+    /**
+     * 
+     * @param type $cache   cache为0，直接读数据库
+     * @return type
+     */
+    public function get( $cache = 5 )
+    {
+        return $this->commGet($cache);
     }
     
-    public function info( $cache = 5  )
+    protected static function commExtraDetail( &$item ,$id ){
+        //获取关联字段名：形如：array(2) {
+        //      ["rec_user_id"] => string(9) "ydzb_user"
+        //      ["busier_id"] => string(9) "ydzb_user"
+        //  }
+        $tableName = self::mainModel()->getTable() ;
+        $infoFields = SystemFieldsInfoService::getInfoFields( $tableName );
+        //【1】将关联id转换为信息
+        foreach( $infoFields as $key=>$table ){
+            $service            = DbOperate::getService($table);
+            $infoKey            = preg_replace( '/_id$/','_info',$key );  //将_id结尾的键，替换为Info结尾的键盘：注意标准化
+            //转驼峰，驼峰表示附加字段(冗余,虚拟)
+            $item[camelize($infoKey) ]   = isset($item[$key]) && $item[$key] ? $service::getInstance($item[$key])->get() : [];
+        }
+        //【2】一对多中间表信息，如角色等
+        $manyFields = SystemFieldsManyService::getManyFields( $tableName );
+        foreach( $manyFields as $key=>$fieldInfo ){
+            $service            = DbOperate::getService( $fieldInfo['relative_table'] );
+            $tmpCon     = [];
+            $tmpCon[]   = [ $fieldInfo['main_field'],'=',$item[$fieldInfo['field_name']]];
+            //拼接字段
+            $item[ $fieldInfo['to_field'] ] = $service::mainModel()->where($tmpCon)->column($fieldInfo['to_field']);
+        }
+        
+        return $item;
+    }
+    /**
+     * 额外信息获取
+     * @param type $item
+     * @param type $id
+     * @return type
+     */
+    public static function extraDetail(&$item,$id ){
+        return self::commExtraDetail($item,$id );
+    }
+    
+    /**
+     * 公共详情
+     * @param type $cache
+     * @return type
+     */
+    protected function commInfo( $cache = 5  )
     {
         $info = self::mainModel()->where('id',$this->uuid)->cache( $cache )->find();
         //额外添加详情信息：固定为extraDetail方法
@@ -417,6 +527,15 @@ trait MainModelTrait {
         }
 
         return $info;
+    }
+    /**
+     * 详情
+     * @param type $cache
+     * @return type
+     */
+    public function info( $cache = 5  )
+    {
+        return $this->commInfo( $cache );
     }
     /**
      * 按条件查询单条数据
