@@ -3,6 +3,8 @@ namespace xjryanse\traits;
 
 use xjryanse\logic\SnowFlake;
 use xjryanse\system\service\SystemFileService;
+use xjryanse\logic\DbOperate;
+use xjryanse\logic\ModelQueryCon;
 use think\facade\Request;
 use think\Model;
 
@@ -174,5 +176,97 @@ trait ModelTrait {
     public static function getImgVal( $value )
     {
         return SystemFileService::getInstance( $value )->get()? : $value ;
+    }
+    /**
+     * 获取数据表前缀
+     * @return type
+     */
+    public static function getPrefix() {
+        $config = self::getConnection()->getConfig();
+        return isset($config['prefix']) ? $config['prefix'] : '';
+    }
+    
+    /**
+     * 模型类对应的基础表
+     * @return type
+     */
+    public function baseTableName()
+    {
+        $classShortName = (new \ReflectionClass( __CLASS__ ))->getShortName();
+        return $this->getPrefix() .lcfirst(uncamelize($classShortName));
+    }
+    /*
+     * 以基础表进行条件查询
+     */
+    public function baseTableSql( $con ,$field="*" )
+    {
+        $tableCon = $this->tableConFilt($con);
+        return $this->where($tableCon)->field($field)->buildSql();
+    }
+    /**
+     * $con 按表名过滤
+     */
+    public function tableConFilt( $con )
+    {
+        $this->table = $this->baseTableName( );
+        $tableCon = [];
+        foreach( $con as $value){
+            if($this->hasField($value[0])){
+                $tableCon[] = $value;
+            }
+        }
+        return $tableCon;
+    }
+    /**
+     * 关联设定字段
+     * @param type $tableArr    
+        $tableArr[] = ['table'=>'ydzb_goods_trade_mark' ,'mainField'=>'goods_table_id'  ,'tableField'=>'id']; 
+        $tableArr[] = ['table'=>'ydzb_goods_tm_rent'    ,'mainField'=>'id'              ,'tableField'=>'id'];
+     * @param type $con
+     * @return string
+     */
+    public function setTable($tableArr = [],$con = [])
+    {
+        $fieldStrAll    = "alias.* ";
+        //主表
+        $tableStrMain   = $this->baseTableName( ) ." as alias ";
+        //关联子表
+        $tableSubStr    = "";
+        $onStrArr       = [];
+        //分表关联查询on条件
+        $subTableConStr = '';
+        
+        foreach( $tableArr as $key=>$table){
+            $alias          = "alias".$key;
+            $service        = DbOperate::getService($table['table']);
+            $tableSql       = $service::mainModel()->baseTableName( );
+            
+            $tableFields    = DbOperate::fieldsExceptByTable( $table['table'] , $this->baseTableName());
+            //没有字段
+            if(!$tableFields){
+                continue;
+            }
+            $fieldStr       = DbOperate::fieldsAliasStr( $tableFields , $alias); 
+            
+            $fieldStrAll    .= ",".$fieldStr;
+            $tableSubStr    .= " inner join " . $tableSql . " as " .$alias;
+            $onStrArr[]      = " alias.". $table['mainField'] ." = " . $alias . "." .$table['tableField'];
+            
+            $subTableCon    = $service::mainModel()->tableConFilt($con);
+            $subTableConStr .= ' and '.ModelQueryCon::conditionParse($subTableCon, $alias);                
+        }
+        if(!$tableSubStr){
+            $this->table = $this->baseTableName( );
+            return $this->table;
+        }
+        $onStrAll = implode(' and ',$onStrArr);
+        $sql  = "(select ". $fieldStrAll ." from ".$tableStrMain.$tableSubStr ;
+        if ( $onStrAll . $subTableConStr ){
+            $sql    .= " on ".$onStrAll . $subTableConStr;
+        }
+        $sql    .= ") as eee";
+        
+        $this->table = $sql;
+        return $sql;
     }
 }

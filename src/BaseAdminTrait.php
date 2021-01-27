@@ -8,7 +8,6 @@ use xjryanse\logic\Sql;
 use xjryanse\logic\ModelQueryCon;
 use xjryanse\system\logic\ColumnLogic;
 use xjryanse\system\logic\ExportLogic;
-use xjryanse\system\logic\ImportLogic;
 use xjryanse\system\service\SystemColumnListService;
 use xjryanse\system\service\SystemImportAsyncService;
 
@@ -181,7 +180,6 @@ trait BaseAdminTrait
     {
         $header = $this->commHeader();
         $res = $this->commGet();
-//        dump($res);
         if( !$res ){
             return ;
         }
@@ -207,7 +205,7 @@ trait BaseAdminTrait
     protected function commDel()
     {
         //取请求字段内容
-        $data               = Request::post();
+        $data               = Request::param();
         if( !isset($data['id']) || ! $data['id'] ) {
             return $this->errReturn( 'id必须' );
         }
@@ -375,31 +373,10 @@ trait BaseAdminTrait
         //添加到导入任务
         $data['cov_data'] = json_encode(ColumnLogic::getCovData( $this->columnInfo ),JSON_UNESCAPED_UNICODE);
 
-        $res = SystemImportAsyncService::addTask($this->columnInfo['table_name'], $fileId, $headers, $preInputData ,$data);
-        //
-        return $this->succReturn('数据导入成功',$res);        
+        $res    = SystemImportAsyncService::addTask($this->columnInfo['table_name'], $fileId, $headers, $preInputData ,$data);
+        $resp   = SystemImportAsyncService::getInstance($res['id'])->doImport();
         
-//        //数据
-//        $resData    = ImportLogic::fileGetArray( $fieldId ,$column );
-//        
-//        //写入
-//        Db::startTrans();
-//        try {
-////            $preInputData = $this->getPreImportData();
-////            foreach($resData as &$v){
-////                $v = array_merge( $preInputData , $v );
-////            }
-//            $class  = DbOperate::getService( $this->columnInfo['table_name'] );
-//
-//            $res    = $class::saveAll($resData);
-//            // 提交事务
-//            Db::commit();
-//            return $this->succReturn('数据导入成功'.count($res).'条',$res);        
-//        } catch (\Exception $e) {
-//            // 回滚事务
-//            Db::rollback();
-//            return $this->throwMsg($e);
-//        }
+        return $this->succReturn( '数据导入成功',$resp );        
     }    
     
     /**

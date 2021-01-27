@@ -157,7 +157,7 @@ trait MainModelTrait {
     }
     
     /**************************操作方法********************************/
-    public static function save( array $data)
+    public static function save( $data)
     {
         return self::commSave($data);
     }
@@ -312,16 +312,16 @@ trait MainModelTrait {
         return $this->commDelete();
     }    
     /**************************查询方法********************************/
-    protected static function commLists( $con = [],$order='',$field="*" )
+    protected static function commLists( $con = [],$order='',$field="*" ,$cache=2)
     {
         $conAll = array_merge( $con ,self::commCondition() );
         if( !$order && self::mainModel()->hasField('sort')){
             $order = "sort";
         }
-        return self::mainModel()->where( $conAll )->order($order)->field($field)->cache(2)->select();
+        return self::mainModel()->where( $conAll )->order($order)->field($field)->cache( $cache )->select();
     }
     
-    public static function lists( $con = [],$order='',$field="*")
+    public static function lists( $con = [],$order='',$field="*" ,$cache=2 )
     {
         return self::commLists($con, $order, $field)->each(function($item, $key){
                 //额外添加详情信息：固定为extraDetail方法
@@ -402,7 +402,7 @@ trait MainModelTrait {
     public static function listsByField( $fieldName, $fieldValue, $con = [] )
     {
         $con[] = [ $fieldName , '=',$fieldValue ];
-        return self::lists( $con );
+        return self::lists( $con ,'','*',0);    //无缓存取数据
     }
     /**
      * id数组
