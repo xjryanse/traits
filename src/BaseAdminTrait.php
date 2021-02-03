@@ -8,6 +8,7 @@ use xjryanse\logic\Sql;
 use xjryanse\logic\ModelQueryCon;
 use xjryanse\system\logic\ColumnLogic;
 use xjryanse\system\logic\ExportLogic;
+use xjryanse\system\logic\ImportLogic;
 use xjryanse\system\service\SystemColumnListService;
 use xjryanse\system\service\SystemImportAsyncService;
 
@@ -29,8 +30,12 @@ trait BaseAdminTrait
     protected function initAdminParamSet()
     {
         //defaultColumn 方法中，会提取cateFieldName的key，来进行过滤字段
+        //方法id
+        $methodKey = Request::param('methodKey','') ? : '';
+        //方法id作数据隔离
         $cateFieldValues        = Request::param();
-        $this->columnInfo       = $this->getColumnInfo( $cateFieldValues );
+        $this->columnInfo       = $this->getColumnInfo( $cateFieldValues ,$methodKey );
+        self::debug('$this->columnInfo',$this->columnInfo);
         //编辑方法才去取
         if(Request::action() == 'edit'){
             $idGetInfo  = $this->commGet();
@@ -48,12 +53,12 @@ trait BaseAdminTrait
      * @param type $cateFieldValues defaultColumn 方法中，会提取cateFieldName的key，来进行过滤字段
      * @return type
      */
-    protected function getColumnInfo( $cateFieldValues = [])
+    protected function getColumnInfo( $cateFieldValues = [],$methodKey ='')
     {
         $controller             = strtolower( Request::controller() );
         $admKey                 = Request::param('admKey','');
 
-        return ColumnLogic::defaultColumn( $controller, $admKey ,'', $cateFieldValues);
+        return ColumnLogic::defaultColumn( $controller, $admKey ,'', $cateFieldValues, $methodKey);
     }
     
     /**
@@ -82,7 +87,7 @@ trait BaseAdminTrait
     {
         if(Request::isAjax()){
             $list               = $this->commListData( $cond );
-            $list['columnInfo'] = $this->columnInfo;
+            $list['columnInfo'] = $this->columnInfo;            
             return $this->dataReturn('获取数据',$list);
         }
 //        $this->assign('columnInfo',$this->columnInfo);
@@ -125,6 +130,8 @@ trait BaseAdminTrait
             //根据不同字段类型，映射不同类库进行数据转换
             $vv = $this->commDataInfo( $vv , $this->columnInfo['listInfo'] );
         }
+        //数据统计
+//        $list['statics']    = $class::paginateStatics( $con );
 
         return $list;
     }
@@ -246,7 +253,7 @@ trait BaseAdminTrait
     protected function commSave()
     {
         //取请求字段内容
-        $postData           = Request::post();
+        $postData           = Request::param();
         $info               = $this->columnInfo;
         //数据转换
         $data = $this->commDataCov( $postData , $info);
@@ -370,13 +377,21 @@ trait BaseAdminTrait
             return $this->errReturn( '未指定文件' );
         }
         $preInputData = Request::param();
-        //添加到导入任务
-        $data['cov_data'] = json_encode(ColumnLogic::getCovData( $this->columnInfo ),JSON_UNESCAPED_UNICODE);
-
-        $res    = SystemImportAsyncService::addTask($this->columnInfo['table_name'], $fileId, $headers, $preInputData ,$data);
-        $resp   = SystemImportAsyncService::getInstance($res['id'])->doImport();
         
-        return $this->succReturn( '数据导入成功',$resp );        
+        //使用实时导入20210127
+        $impData = ImportLogic::fileGetArray( $fileId, $headers );
+        $covData = ColumnLogic::getCovData( $this->columnInfo );
+        //批量新增
+        $class  = DbOperate::getService( $this->columnInfo['table_name'] );
+        //数据导入的
+        $impData2 = ImportLogic::importDataCov($impData, $covData);        
+        $res = $class::saveAll( $impData2 ,$preInputData);
+        //添加到导入任务【已完成】
+        $data['cov_data'] = json_encode($covData,JSON_UNESCAPED_UNICODE);
+        $data['op_status'] = XJRYANSE_OP_FINISH;
+        SystemImportAsyncService::addTask($this->columnInfo['table_name'], $fileId, $headers, $preInputData ,$data);
+
+        return $this->succReturn( '数据导入成功'.count($res).'条',$res );        
     }    
     
     /**

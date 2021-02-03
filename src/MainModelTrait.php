@@ -5,6 +5,7 @@ use xjryanse\user\logic\AuthLogic;
 use xjryanse\logic\DbOperate;
 use xjryanse\system\service\SystemFieldsInfoService;
 use xjryanse\system\service\SystemFieldsManyService;
+use xjryanse\logic\Debug;
 use Exception;
 /**
  * 主模型复用
@@ -84,6 +85,24 @@ trait MainModelTrait {
         $data['update_time'] = date('Y-m-d H:i:s');
         return $data;
     }
+    
+    /**
+     * 条件给字段添加索引
+     */
+    protected static function condAddColumnIndex( $con = [])
+    {
+        if(!$con){
+            return false;
+        } else {
+            return true;     //去掉本行后会执行自动添加索引，一般应于项目正式后关闭
+        }
+        foreach( $con as $conArr ){
+            if(is_array($conArr)){
+                DbOperate::addColumnIndex(self::mainModel()->getTable(), $conArr[0]);
+            }
+        }
+    }
+    
     /*****公共保存【外部有调用】*****/
     protected static function commSave( $data ){
         //预保存数据：id，app_id,company_id,creater,updater,create_time,update_time
@@ -115,10 +134,10 @@ trait MainModelTrait {
         $info = $this->get(0);
         if(!$info){
 //            return false;
-            throw new Exception(self::mainModel()->getTable().'表'.$this->uuid.'记录不存在');
+            throw new Exception('记录不存在'.self::mainModel()->getTable().'表'.$this->uuid);
         }
         if(isset($info['is_lock']) && $info['is_lock']){
-            throw new Exception(self::mainModel()->getTable().'表'.$this->uuid.'记录已锁定不可修改');
+            throw new Exception('记录已锁定不可修改'.self::mainModel()->getTable().'表'.$this->uuid);
         }
         if(!isset($data['id']) || !$data['id']){
             $data['id'] = $this->uuid;
@@ -126,13 +145,13 @@ trait MainModelTrait {
         $data['updater'] = session(SESSION_USER_ID);
         $data['update_time'] = date('Y-m-d H:i:s');
         //额外添加详情信息：固定为extraDetail方法；更新前执行
-        if(method_exists( __CLASS__, 'extraPreSave')){
-            self::extraPreSave( $data, $data['id']);      
+        if(method_exists( __CLASS__, 'extraPreUpdate')){
+            self::extraPreUpdate( $data, $data['id']);      
         }
         $res = self::mainModel()->update( $data );
         //更新完后执行：类似触发器
-        if(method_exists( __CLASS__, 'extraAfterSave')){
-            self::extraAfterSave( $res, $data['id']);
+        if(method_exists( __CLASS__, 'extraAfterUpdate')){
+            self::extraAfterUpdate( $res, $data['id']);
         }
         if($res){
             self::_cacheUpdate( $this->uuid );
@@ -146,8 +165,15 @@ trait MainModelTrait {
      */
     protected function commDelete()
     {
-        if(!$this->get()){
-            throw new Exception(self::mainModel()->getTable().'表'.$this->uuid.'记录不存在');
+        $info = $this->get(0);
+        if(!$info){
+            throw new Exception('记录不存在'.self::mainModel()->getTable().'表'.$this->uuid);
+        }
+        if(isset($info['has_used']) && $info['has_used']){
+            throw new Exception('记录已使用不可删除'.self::mainModel()->getTable().'表'.$this->uuid);
+        }
+        if(isset($info['is_lock']) && $info['is_lock']){
+            throw new Exception('记录已锁定不可删除'.self::mainModel()->getTable().'表'.$this->uuid);
         }
         $res = self::mainModel()->where('id',$this->uuid)->delete( );
         if($res){
@@ -164,13 +190,13 @@ trait MainModelTrait {
     /*
      * 批量保存
      */
-    public static function saveAll ( array $data )
+    public static function saveAll ( array $data ,$preData=[])
     {
         $tmpArr = [];
         foreach( $data as $v){
-            $tmpData        = $v ;
+            $tmpData        = array_merge($preData,$v) ;
             //预保存数据
-            $tmpArr[] = self::preSaveData( $tmpData ); ;
+            $tmpArr[] = self::preSaveData( $tmpData );
         }
         //saveAll方法新增数据默认会自动识别数据是需要新增还是更新操作，当数据中存在主键的时候会认为是更新操作，如果你需要带主键数据批量新增，可以使用下面的方式
         $res = self::mainModel()->saveAll( $tmpArr ,false );
@@ -318,12 +344,16 @@ trait MainModelTrait {
         if( !$order && self::mainModel()->hasField('sort')){
             $order = "sort";
         }
+        Debug::debug( 'commLists查询表', self::mainModel()->getTable() );
+        Debug::debug( 'commLists查询sql', $conAll );
+        //字段加索引
+        self::condAddColumnIndex( $con );
         return self::mainModel()->where( $conAll )->order($order)->field($field)->cache( $cache )->select();
     }
     
     public static function lists( $con = [],$order='',$field="*" ,$cache=2 )
     {
-        return self::commLists($con, $order, $field)->each(function($item, $key){
+        return self::commLists($con, $order, $field,$cache)->each(function($item, $key){
                 //额外添加详情信息：固定为extraDetail方法
                 if(method_exists( __CLASS__, 'extraDetail')){
                     self::extraDetail($item, $item->id);
@@ -341,17 +371,55 @@ trait MainModelTrait {
     protected static function commPaginate( $con = [],$order='',$perPage=10,$having = '')
     {
         $conAll = array_merge( $con ,self::commCondition() );
+        //字段加索引
+        self::condAddColumnIndex( $conAll );
+        
         $res = self::mainModel()->where( $conAll )->order($order)
-                ->having($having)
-                ->cache(2)
-                ->paginate( intval($perPage) )
-                ->each(function($item, $key){
-                    //额外添加详情信息：固定为extraDetail方法
-                    if(method_exists( __CLASS__, 'extraDetail')){
-                        self::extraDetail($item, $item->id);
-                    }
-                });
+            ->having($having)
+            ->cache(2)
+            ->paginate( intval($perPage) )
+            ->each(function($item, $key){
+                //额外添加详情信息：固定为extraDetail方法
+                if(method_exists( __CLASS__, 'extraDetail')){
+                    self::extraDetail($item, $item->id);
+                }
+            });
         return $res ? $res->toArray() : [] ;                
+    }
+    
+    /**
+     * 分页的统计
+     * @param type $con
+     * @param type $order
+     * @param type $perPage
+     * @return type
+     */
+    protected static function commPaginateStatics( $con = [],$order='',$perPage=10,$having = '')
+    {
+        $conAll = array_merge( $con ,self::commCondition() );
+        $table  = self::mainModel()::getTable();
+        $fields = self::mainModel()::getConnection()->getFields( $table );
+        //计数
+        $distinctArr = [];
+        foreach( $fields as $key => $value){
+            $distinctArr[] = 'count(distinct `'.$key ."`) as `SD".$key.'`';
+        }
+        $count  = self::mainModel()->where( $conAll )->field( implode(',', $distinctArr) )->select();
+        //求和
+        $sumArr = [];
+        foreach( $fields as $key => $value){
+            $sumArr[] = 'sum(`'.$key ."`) as `SS".$key.'`';
+        }
+        $sum    = self::mainModel()->where( $conAll )->field( implode(',', $sumArr) )->select();
+
+        return ['count'=>$count,'sum'=>$sum];
+    }
+    /**
+     * 分页的统计
+     */
+    public static function paginateStatics( $con = [] )
+    {
+        return self::commPaginateStatics($con);
     }
     
     /**
@@ -381,6 +449,9 @@ trait MainModelTrait {
         if( !$order && self::mainModel()->hasField('sort')){
             $order = "sort";
         }
+        //字段加索引
+        self::condAddColumnIndex( $conAll );
+        
         return self::mainModel()->where( $conAll )->order($order)->field($field)->cache(2)->select();
     }
     
@@ -414,6 +485,9 @@ trait MainModelTrait {
         if(self::mainModel()->hasField('app_id')){
             $con[] = ['app_id','=',session(SESSION_APP_ID)];
         }
+        //字段加索引
+        self::condAddColumnIndex( $con );
+        
         return self::mainModel()->where( $con )->cache(2)->column('id');
     }
     /**
@@ -427,6 +501,9 @@ trait MainModelTrait {
         if(self::mainModel()->hasField('app_id')){
             $con[] = ['app_id','=',session(SESSION_APP_ID)];
         }
+        //字段加索引
+        self::condAddColumnIndex( $con );
+        
         return self::mainModel()->where( $con )->cache(2)->column($field);
     }    
     
@@ -440,6 +517,9 @@ trait MainModelTrait {
         if(self::mainModel()->hasField('app_id')){
             $con[] = ['app_id','=',session(SESSION_APP_ID)];
         }
+        //字段加索引
+        self::condAddColumnIndex( $con );
+        
         return self::mainModel()->where( $con )->count(  );
     }    
     /**
@@ -452,6 +532,9 @@ trait MainModelTrait {
         if(self::mainModel()->hasField('app_id')){
             $con[] = ['app_id','=',session(SESSION_APP_ID)];
         }
+        //字段加索引
+        self::condAddColumnIndex( $con );
+        
         return self::mainModel()->where( $con )->sum( $field );
     }    
     
@@ -478,6 +561,7 @@ trait MainModelTrait {
     }
     
     protected static function commExtraDetail( &$item ,$id ){
+        if(!$item){ return false;}        
         //获取关联字段名：形如：array(2) {
         //      ["rec_user_id"] => string(9) "ydzb_user"
         //      ["busier_id"] => string(9) "ydzb_user"
@@ -498,7 +582,7 @@ trait MainModelTrait {
             $tmpCon     = [];
             $tmpCon[]   = [ $fieldInfo['main_field'],'=',$item[$fieldInfo['field_name']]];
             //拼接字段
-            $item[ $fieldInfo['to_field'] ] = $service::mainModel()->where($tmpCon)->column($fieldInfo['to_field']);
+            $item[ $fieldInfo['to_field'] ] = $service::mainModel()->where($tmpCon)->cache(500)->column($fieldInfo['to_field']);
         }
         
         return $item;
@@ -548,10 +632,18 @@ trait MainModelTrait {
         if(self::mainModel()->hasField('app_id')){
             $con[] = ['app_id','=',session(SESSION_APP_ID)];
         }
+        //字段加索引
+        self::condAddColumnIndex( $con );
+        
         $inst = self::mainModel()->where( $con );
-        return $cache
+        $item = $cache
                 ? $inst->cache( $cache )->find()
                 : $inst->find();
+        //额外添加详情信息：固定为extraDetail方法
+        if(method_exists( __CLASS__, 'extraDetail')){
+            self::extraDetail($item, $item->id);
+        }
+        return $item;
     }
     /**
      * 末条记录id

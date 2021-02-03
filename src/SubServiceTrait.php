@@ -49,7 +49,7 @@ trait SubServiceTrait {
         return self::addSubServiceData($item, $subService, $item->id);
     }
     /**
-     * 
+     * 性能不佳，慎用-20210201
      * @param object $item      数据项
      * @param type $subService  模型服务类
      * @param type $id          模型服务类的数据id

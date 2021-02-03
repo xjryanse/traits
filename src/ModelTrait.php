@@ -171,11 +171,18 @@ trait ModelTrait {
         return $value;
     }
     /**
+     * 时间修改器
+     */
+    public static function setTimeVal( $value )
+    {
+        return $value && strtotime($value) > 0 ? $value : null;
+    }    
+    /**
      * 图片获取器取值
      */
     public static function getImgVal( $value )
     {
-        return SystemFileService::getInstance( $value )->get()? : $value ;
+        return SystemFileService::getInstance( $value )->get(86400)? : $value ;
     }
     /**
      * 获取数据表前缀
