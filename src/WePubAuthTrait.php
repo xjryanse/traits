@@ -6,6 +6,7 @@ use xjryanse\logic\WxBrowser;
 use xjryanse\system\service\SystemCompanyService;
 use xjryanse\wechat\service\WechatWePubService;
 use xjryanse\wechat\WePub\Fans;
+use Exception;
 
 /**
  * 微信授权登录，一般需依赖一堆类库
@@ -57,7 +58,7 @@ trait WePubAuthTrait
         //acid查询公众号账户信息
         $app = WechatWePubService::getInstance($this->wePubAcid)->get();
         if(!$app){
-            echo json_encode(['code' => '1',"msg"=>'公众号不存在']); exit;
+            throw new Exception('公众号不存在,acid:'.$this->wePubAcid);
         }
         
         $this->wePubAppId        = $app->appid;
