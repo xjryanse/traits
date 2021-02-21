@@ -53,6 +53,11 @@ trait MainModelTrait {
         $con    = session(SESSION_USER_ID) 
                 ? AuthLogic::dataCon( session(SESSION_USER_ID) , self::mainModel()->getTable())
                 : [] ;
+        //customerId 的session
+        //客户id
+        if( self::mainModel()->hasField('customer_id') && session ( SESSION_CUSTOMER_ID ) ){
+            $con[] = ['customer_id','=',session(SESSION_CUSTOMER_ID)];
+        }
         //应用id
         if( self::mainModel()->hasField('app_id') ){
             $con[] = ['app_id','=',session(SESSION_APP_ID)];
