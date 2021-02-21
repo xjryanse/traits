@@ -639,7 +639,7 @@ trait MainModelTrait {
         }
         //字段加索引
         self::condAddColumnIndex( $con );
-        
+        Debug::debug( 'find查询条件', $con );        
         $inst = self::mainModel()->where( $con );
         $item = $cache
                 ? $inst->cache( $cache )->find()
