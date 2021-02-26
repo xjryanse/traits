@@ -163,7 +163,13 @@ trait BaseAdminTrait
                 :'save';
         $this->assign('formUrl', url( $url , $this->paramInherit ) );
         $this->assign('btnName', '新增' );
-        return $this->fetch( $this->template ? : 'common/add');
+        
+        $isLayer = Request::param('isLayer','');                        //弹窗不是新页面
+        if($isLayer){
+            return $this->fetch( $this->template ? : 'common/add2');    //加载静态资源
+        } else {
+            return $this->fetch( $this->template ? : 'common/add');
+        }
     }
     /**
      * 取信息
@@ -204,7 +210,12 @@ trait BaseAdminTrait
         $this->assign('formUrl', url( $ajaxUrl ,$this->paramInherit) );
         $this->assign('btnName', '编辑' );
 
-        return $this->fetch( $this->template ? : 'common/add');
+        $isLayer = Request::param('isLayer','');                        //弹窗不是新页面
+        if($isLayer){
+            return $this->fetch( $this->template ? : 'common/add2');    //加载静态资源
+        } else {
+            return $this->fetch( $this->template ? : 'common/add');
+        }
     }
     /**
      * 公共删除接口

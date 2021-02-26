@@ -120,7 +120,8 @@ trait MainModelTrait {
         $res = self::mainModel()->create( $data );
         //更新完后执行：类似触发器
         if(method_exists( __CLASS__, 'extraAfterSave')){
-            self::extraAfterSave( $res, $data['id']);      
+            $resp = $res ? $res ->toArray() : [];
+            self::extraAfterSave( $resp, $data['id']);      
         }
         
         if($res){
@@ -156,7 +157,8 @@ trait MainModelTrait {
         $res = self::mainModel()->update( $data );
         //更新完后执行：类似触发器
         if(method_exists( __CLASS__, 'extraAfterUpdate')){
-            self::extraAfterUpdate( $res, $data['id']);
+            $resp = $res ? $res ->toArray() : [];
+            self::extraAfterUpdate( $resp, $data['id']);
         }
         if($res){
             self::_cacheUpdate( $this->uuid );
@@ -560,7 +562,7 @@ trait MainModelTrait {
      * @param type $cache   cache为0，直接读数据库
      * @return type
      */
-    public function get( $cache = 5 )
+    public function get( $cache = 2 )
     {
         return $this->commGet($cache);
     }
@@ -622,7 +624,7 @@ trait MainModelTrait {
      * @param type $cache
      * @return type
      */
-    public function info( $cache = 5  )
+    public function info( $cache = 2  )
     {
         return $this->commInfo( $cache );
     }
@@ -639,7 +641,7 @@ trait MainModelTrait {
         }
         //字段加索引
         self::condAddColumnIndex( $con );
-        Debug::debug( 'find查询条件', $con );        
+        
         $inst = self::mainModel()->where( $con );
         $item = $cache
                 ? $inst->cache( $cache )->find()
