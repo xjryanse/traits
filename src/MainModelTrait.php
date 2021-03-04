@@ -5,7 +5,9 @@ use xjryanse\user\logic\AuthLogic;
 use xjryanse\logic\DbOperate;
 use xjryanse\system\service\SystemFieldsInfoService;
 use xjryanse\system\service\SystemFieldsManyService;
+use xjryanse\system\service\SystemTableCacheTimeService;
 use xjryanse\logic\Debug;
+use think\facade\Cache;
 use Exception;
 /**
  * 主模型复用
@@ -30,6 +32,16 @@ trait MainModelTrait {
         
         return $method .'不存在';
     }    
+    /**
+     * 默认缓存时间
+     * @return type
+     */
+    protected static function defaultCacheTime()
+    {
+        $tableName = self::mainModel()->getTable();
+        return SystemTableCacheTimeService::tableCache( $tableName );
+    }
+    
     /**
      * 缓存数据更新
      */
@@ -123,7 +135,10 @@ trait MainModelTrait {
             $resp = $res ? $res ->toArray() : [];
             self::extraAfterSave( $resp, $data['id']);      
         }
-        
+        //清缓存
+        if(SystemTableCacheTimeService::tableHasLog(self::mainModel()->getTable())){
+            Cache::clear();
+        }
         if($res){
             self::_cacheUpdate($res['id']);
         }
@@ -160,6 +175,11 @@ trait MainModelTrait {
             $resp = $res ? $res ->toArray() : [];
             self::extraAfterUpdate( $resp, $data['id']);
         }
+        //清缓存
+        if(SystemTableCacheTimeService::tableHasLog(self::mainModel()->getTable())){
+            Cache::clear();
+        }
+        
         if($res){
             self::_cacheUpdate( $this->uuid );
         }
@@ -293,8 +313,10 @@ trait MainModelTrait {
      * @param type $default     默认值
      * @return type
      */
-    public function fieldValue( $fieldName, $default='',$cache = 5)
+    public function fieldValue( $fieldName, $default='',$cache = -1)
     {
+        //如果cache小于-1，表示外部没有传cache,取配置的cache值
+        $cache = $cache <0 ? self::defaultCacheTime() : $cache;
         $info = $this->get( $cache );
         return ($info && isset($info[ $fieldName ])) 
             ? $info[ $fieldName ] 
@@ -346,7 +368,7 @@ trait MainModelTrait {
     }    
     /**************************查询方法********************************/
     protected static function commLists( $con = [],$order='',$field="*" ,$cache=2)
-    {
+    {        
         $conAll = array_merge( $con ,self::commCondition() );
         if( !$order && self::mainModel()->hasField('sort')){
             $order = "sort";
@@ -358,8 +380,11 @@ trait MainModelTrait {
         return self::mainModel()->where( $conAll )->order($order)->field($field)->cache( $cache )->select();
     }
     
-    public static function lists( $con = [],$order='',$field="*" ,$cache=2 )
+    public static function lists( $con = [],$order='',$field="*" ,$cache = -1 )
     {
+        //如果cache小于-1，表示外部没有传cache,取配置的cache值
+        $cache = $cache <0 ? self::defaultCacheTime() : $cache;
+        
         return self::commLists($con, $order, $field,$cache)->each(function($item, $key){
                 //额外添加详情信息：固定为extraDetail方法
                 if(method_exists( __CLASS__, 'extraDetail')){
@@ -380,10 +405,11 @@ trait MainModelTrait {
         $conAll = array_merge( $con ,self::commCondition() );
         //字段加索引
         self::condAddColumnIndex( $conAll );
-        
+        //如果cache小于-1，表示外部没有传cache,取配置的cache值
+        $cache = self::defaultCacheTime();
         $res = self::mainModel()->where( $conAll )->order($order)
             ->having($having)
-            ->cache(2)
+            ->cache( $cache )
             ->paginate( intval($perPage) )
             ->each(function($item, $key){
                 //额外添加详情信息：固定为extraDetail方法
@@ -562,8 +588,10 @@ trait MainModelTrait {
      * @param type $cache   cache为0，直接读数据库
      * @return type
      */
-    public function get( $cache = 2 )
+    public function get( $cache = -1 )
     {
+        //如果cache小于-1，表示外部没有传cache,取配置的cache值
+        $cache = $cache <0 ? self::defaultCacheTime() : $cache;
         return $this->commGet($cache);
     }
     
@@ -626,6 +654,8 @@ trait MainModelTrait {
      */
     public function info( $cache = 2  )
     {
+        //如果cache小于-1，表示外部没有传cache,取配置的cache值
+        $cache = $cache <0 ? self::defaultCacheTime() : $cache;        
         return $this->commInfo( $cache );
     }
     /**
