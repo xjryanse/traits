@@ -6,6 +6,7 @@ use xjryanse\logic\DbOperate;
 use xjryanse\system\service\SystemFieldsInfoService;
 use xjryanse\system\service\SystemFieldsManyService;
 use xjryanse\system\service\SystemTableCacheTimeService;
+use xjryanse\system\service\SystemFieldsLogTableService;
 use xjryanse\logic\Debug;
 use think\facade\Cache;
 use Exception;
@@ -74,7 +75,10 @@ trait MainModelTrait {
         if( self::mainModel()->hasField('app_id') ){
             $con[] = ['app_id','=',session(SESSION_APP_ID)];
         }
-        
+        //删除标记
+        if( self::mainModel()->hasField('is_delete') ){
+            $con[] = ['is_delete','=',0];
+        }        
         return $con;
     }
     /**
@@ -135,6 +139,8 @@ trait MainModelTrait {
             $resp = $res ? $res ->toArray() : [];
             self::extraAfterSave( $resp, $data['id']);      
         }
+        //20210311记录更新日志        
+        SystemFieldsLogTableService::tableLog( self::mainModel()->getTable(), [], $data );
         //清缓存
         if(SystemTableCacheTimeService::tableHasLog(self::mainModel()->getTable())){
             Cache::clear();
@@ -175,6 +181,8 @@ trait MainModelTrait {
             $resp = $res ? $res ->toArray() : [];
             self::extraAfterUpdate( $resp, $data['id']);
         }
+        //20210311记录更新日志
+        SystemFieldsLogTableService::tableLog( self::mainModel()->getTable(), $info, $data );
         //清缓存
         if(SystemTableCacheTimeService::tableHasLog(self::mainModel()->getTable())){
             Cache::clear();
@@ -197,7 +205,10 @@ trait MainModelTrait {
             throw new Exception('记录不存在'.self::mainModel()->getTable().'表'.$this->uuid);
         }
         if(isset($info['has_used']) && $info['has_used']){
-            throw new Exception('记录已使用不可删除'.self::mainModel()->getTable().'表'.$this->uuid);
+            //软删
+            $res = self::mainModel()->where('id',$this->uuid)->update( ['is_delete'=>1] );
+            return $res;
+//            throw new Exception('记录已使用不可删除'.self::mainModel()->getTable().'表'.$this->uuid);
         }
         if(isset($info['is_lock']) && $info['is_lock']){
             throw new Exception('记录已锁定不可删除'.self::mainModel()->getTable().'表'.$this->uuid);
@@ -364,8 +375,19 @@ trait MainModelTrait {
     
     public function delete()
     {
-        return $this->commDelete();
-    }    
+        //删除前
+        if(method_exists( __CLASS__, 'extraPreDelete')){
+            $this->extraPreDelete();      //注：id在preSaveData方法中生成
+        }
+        //删除
+        $res = $this->commDelete();
+        //删除后
+        if(method_exists( __CLASS__, 'extraAfterDelete')){
+            $this->extraAfterDelete();      //注：id在preSaveData方法中生成
+        }
+        
+        return $res;
+    }
     /**************************查询方法********************************/
     protected static function commLists( $con = [],$order='',$field="*" ,$cache=2)
     {        
@@ -549,6 +571,9 @@ trait MainModelTrait {
     {
         if(self::mainModel()->hasField('app_id')){
             $con[] = ['app_id','=',session(SESSION_APP_ID)];
+        }
+        if(self::mainModel()->hasField('is_delete')){
+            $con[] = ['is_delete','=',0];
         }
         //字段加索引
         self::condAddColumnIndex( $con );

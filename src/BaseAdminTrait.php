@@ -355,7 +355,7 @@ trait BaseAdminTrait
             } else if( in_array($v['type'],['enum','dynenum']) ){
                 //枚举项导出                
                 $str = Sql::buildCaseWhen($v['name'], $v['option'], $v['label']) ;
-            } else {
+            } else if( $v['name'] ){
                 $str = ' concat('. $v['name'].",'\t') ";
             }
             $fields[] = $str . "as `".$v['label']."`";
