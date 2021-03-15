@@ -8,6 +8,7 @@ use xjryanse\system\service\SystemFieldsManyService;
 use xjryanse\system\service\SystemTableCacheTimeService;
 use xjryanse\system\service\SystemFieldsLogTableService;
 use xjryanse\logic\Debug;
+use think\Db;
 use think\facade\Cache;
 use Exception;
 /**
@@ -213,6 +214,18 @@ trait MainModelTrait {
         if(isset($info['is_lock']) && $info['is_lock']){
             throw new Exception('记录已锁定不可删除'.self::mainModel()->getTable().'表'.$this->uuid);
         }
+        //【20210315】判断关联表有记录，则不可删
+        $relativeDels   = SystemFieldsInfoService::relativeDelFields( self::mainModel()->getTable() );
+        if($relativeDels){
+            foreach( $relativeDels as $relativeDel){
+                if(DbOperate::isTableExist($relativeDel['table_name']) 
+                        && Db::table( $relativeDel['table_name'] )->where( $relativeDel['field_name'] ,$this->uuid )->count()){
+//                    throw new Exception('记录已使用，不可操作');
+                    throw new Exception('当前记录'.$this->uuid.'已在数据表'.$relativeDel['table_name'].'的'.$relativeDel['field_name'].'字段使用,不可操作');
+                }
+            }
+        }        
+        
         $res = self::mainModel()->where('id',$this->uuid)->delete( );
         if($res){
             self::_cacheUpdate( $this->uuid );
