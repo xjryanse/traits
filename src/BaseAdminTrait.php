@@ -105,6 +105,7 @@ trait BaseAdminTrait
         
         $this->debug('xinxi',$info);
         $whereFields     = ColumnLogic::getSearchFields($this->columnInfo);
+        $this->debug( '$whereFields',$whereFields );
 
         $con        = array_merge( ModelQueryCon::queryCon($uparam, $whereFields) ,$cond);
         //年月渲染，根据是否设置了字段来判断显示
@@ -230,8 +231,17 @@ trait BaseAdminTrait
         $info               = $this->columnInfo;
         //表名取服务类
         $class  = DbOperate::getService( $info['table_name'] );
+        
+        $ids = Request::param('id','');
+        if(!is_array($ids)){
+            //兼容逗号传值，处理成数组
+            $ids = explode(',',$ids);
+        }
+        
         Db::startTrans();
-        $res    = $class::getInstance( $data['id'] )->delete( );
+        foreach($ids as $id){
+            $res    = $class::getInstance( $id )->delete( );
+        }
         Db::commit();
         return $this->dataReturn('数据删除',$res);
     }

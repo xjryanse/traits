@@ -165,8 +165,9 @@ trait ModelTrait {
      */
     public static function setImgVal( $value )
     {
-        if((is_array($value)|| is_object($value)) && isset( $value['id'])){
-            $value = $value['id'];
+        if(is_array($value)|| is_object($value)){
+            //isset( $value['id']):单图；否则：多图
+            $value = isset( $value['id']) ? $value['id'] : implode(',',array_column($value, 'id'));
         }
         return $value;
     }
@@ -179,10 +180,19 @@ trait ModelTrait {
     }    
     /**
      * 图片获取器取值
+     * @param type $value   值
+     * @param type $isMulti 是否多图
+     * @return type
      */
-    public static function getImgVal( $value )
+    public static function getImgVal( $value ,$isMulti = false)
     {
-        return SystemFileService::getInstance( $value )->get(86400)? : $value ;
+        if($isMulti){
+            $ids    = explode( ',', $value );
+            $con[]  = ['id','in', $ids ];
+            return SystemFileService::lists( $con );
+        } else {
+            return SystemFileService::getInstance( $value )->get(86400)? : $value ;
+        }
     }
     /**
      * 获取数据表前缀

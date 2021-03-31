@@ -62,15 +62,15 @@ trait MainModelTrait {
         return $table.$id;
     }
     //公共的数据过滤条件
-    protected static function commCondition()
+    protected static function commCondition( $withDataAuth = true)
     {
-        $con    = session(SESSION_USER_ID) 
+        $con    = session(SESSION_USER_ID) && $withDataAuth 
                 ? AuthLogic::dataCon( session(SESSION_USER_ID) , self::mainModel()->getTable())
-                : [] ;
+                : AuthLogic::dataCon( session(SESSION_USER_ID) , self::mainModel()->getTable(),true) ;  //不带数据权限情况下，只取严格模式的权限
         //customerId 的session
-        //客户id
+        //客户id  有bug20210323
         if( self::mainModel()->hasField('customer_id') && session ( SESSION_CUSTOMER_ID ) ){
-            $con[] = ['customer_id','=',session(SESSION_CUSTOMER_ID)];
+//            $con[] = ['customer_id','=',session(SESSION_CUSTOMER_ID)];
         }
         //应用id
         if( self::mainModel()->hasField('app_id') ){
@@ -437,7 +437,15 @@ trait MainModelTrait {
      */
     protected static function commPaginate( $con = [],$order='',$perPage=10,$having = '')
     {
+        //默认带数据权限
         $conAll = array_merge( $con ,self::commCondition() );
+        //如果数据权限没记录，尝试去除数据权限进行搜索
+        $count = self::mainModel()->where( $conAll )->count();
+        //有条件才进行搜索：20210326
+        if(!$count && $con){
+            $conAll = array_merge( $con ,self::commCondition( false ));
+        }
+        
         //字段加索引
         self::condAddColumnIndex( $conAll );
         //如果cache小于-1，表示外部没有传cache,取配置的cache值
@@ -452,7 +460,8 @@ trait MainModelTrait {
                     self::extraDetail($item, $item->id);
                 }
             });
-        return $res ? $res->toArray() : [] ;                
+//        $res['con'] = $conAll;
+        return $res ? array_merge($res->toArray(),['con'=>$conAll]) : [] ;                
     }
     
     /**

@@ -74,7 +74,8 @@ trait WePubAuthTrait
      */
     private function wePubGetToken()
     {
-        $url            = Request::url(true);
+        //优先读取Request-Uri参数（兼容vue前后端分离写法），无该参数取当前url
+        $url            = Request::header("Request-Uri") ? : Request::url(true);
         //用于微信回调后跳转
         session( SESSION_WEPUB_CALLBACK ,$url);
         //Oauth2Authorize
