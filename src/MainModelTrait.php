@@ -758,4 +758,13 @@ trait MainModelTrait {
             throw new Exception('未找到数据项~~');
         }
     }
+		
+	/**
+	 *	公司是否有记录（适用于SARRS）
+	 */ 
+    public static function companyHasLog( $companyId, $con )
+    {
+        $con[] = ['company_id','=',$companyId];
+        return self::find( $con );
+    }	
 }
