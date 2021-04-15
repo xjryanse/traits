@@ -220,8 +220,12 @@ trait MainModelTrait {
             foreach( $relativeDels as $relativeDel){
                 if(DbOperate::isTableExist($relativeDel['table_name']) 
                         && Db::table( $relativeDel['table_name'] )->where( $relativeDel['field_name'] ,$this->uuid )->count()){
-//                    throw new Exception('记录已使用，不可操作');
-                    throw new Exception('当前记录'.$this->uuid.'已在数据表'.$relativeDel['table_name'].'的'.$relativeDel['field_name'].'字段使用,不可操作');
+                    if($relativeDel['del_fault_msg']){
+                        throw new Exception($relativeDel['del_fault_msg']);
+                    } else {
+    //                    throw new Exception('记录已使用，不可操作');
+                        throw new Exception('当前记录'.$this->uuid.'已在数据表'.$relativeDel['table_name'].'的'.$relativeDel['field_name'].'字段使用,不可操作');
+                    }
                 }
             }
         }        
@@ -758,13 +762,13 @@ trait MainModelTrait {
             throw new Exception('未找到数据项~~');
         }
     }
-		
-	/**
-	 *	公司是否有记录（适用于SARRS）
-	 */ 
+	
+    /**
+     *	公司是否有记录（适用于SARRS）
+     */ 
     public static function companyHasLog( $companyId, $con )
     {
         $con[] = ['company_id','=',$companyId];
         return self::find( $con );
-    }	
+    }
 }

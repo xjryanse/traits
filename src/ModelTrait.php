@@ -189,9 +189,9 @@ trait ModelTrait {
         if($isMulti){
             $ids    = explode( ',', $value );
             $con[]  = ['id','in', $ids ];
-            return SystemFileService::lists( $con );
+            return SystemFileService::mainModel()->where( $con )->field('id,file_path')->cache(86400)->select();
         } else {
-            return SystemFileService::getInstance( $value )->get(86400)? : $value ;
+            return SystemFileService::mainModel()->where('id', $value )->field('id,file_path')->cache(86400)->find()? : $value ;
         }
     }
     /**
