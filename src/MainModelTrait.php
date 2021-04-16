@@ -72,6 +72,10 @@ trait MainModelTrait {
         if( self::mainModel()->hasField('customer_id') && session ( SESSION_CUSTOMER_ID ) ){
 //            $con[] = ['customer_id','=',session(SESSION_CUSTOMER_ID)];
         }
+        //公司隔离
+        if( self::mainModel()->hasField('company_id') && session ( SESSION_COMPANY_ID ) ){
+            $con[] = ['company_id','=',session(SESSION_COMPANY_ID)];
+        }
         //应用id
         if( self::mainModel()->hasField('app_id') ){
             $con[] = ['app_id','=',session(SESSION_APP_ID)];
@@ -717,9 +721,7 @@ trait MainModelTrait {
      */
     public static function find( $con = [],$cache=5)
     {
-        if(self::mainModel()->hasField('app_id')){
-            $con[] = ['app_id','=',session(SESSION_APP_ID)];
-        }
+        $con = array_merge( $con ,self::commCondition() );        
         //字段加索引
         self::condAddColumnIndex( $con );
         
