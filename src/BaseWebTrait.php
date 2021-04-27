@@ -49,7 +49,7 @@ trait BaseWebTrait
         //推荐人Id
         $this->recUserId        = Request::param('recUserId','');
         //推荐人信息
-        $this->recUserInfo      = $this->recUserId  ? UserService::getInstance($this->recUserId)->get() : [] ; 
+        $this->recUserInfo      = $this->recUserId  ? UserService::getInstance($this->recUserId)->get( 60 ) : [] ; 
     }
     /**
      * 【2】初始化参数渲染

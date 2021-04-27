@@ -8,6 +8,7 @@ use xjryanse\system\service\SystemFieldsManyService;
 use xjryanse\system\service\SystemTableCacheTimeService;
 use xjryanse\system\service\SystemFieldsLogTableService;
 use xjryanse\logic\Debug;
+use think\facade\Request;
 use think\Db;
 use think\facade\Cache;
 use Exception;
@@ -151,6 +152,7 @@ trait MainModelTrait {
             Cache::clear();
         }
         if($res){
+            Debug::debug('$res', $res);
             self::_cacheUpdate($res['id']);
         }
         return $res;        
@@ -443,7 +445,7 @@ trait MainModelTrait {
      * @param type $perPage
      * @return type
      */
-    protected static function commPaginate( $con = [],$order='',$perPage=10,$having = '')
+    protected static function commPaginate( $con = [],$order='',$perPage=10,$having = '',$field = "")
     {
         //默认带数据权限
         $conAll = array_merge( $con ,self::commCondition() );
@@ -458,8 +460,11 @@ trait MainModelTrait {
         self::condAddColumnIndex( $conAll );
         //如果cache小于-1，表示外部没有传cache,取配置的cache值
         $cache = self::defaultCacheTime();
-        $res = self::mainModel()->where( $conAll )->order($order)
-            ->having($having)
+        $inst = self::mainModel()->where( $conAll )->order($order);
+        if( $field ){
+            $inst->field($field);
+        }
+        $res = $inst->having($having)
             ->cache( $cache )
             ->paginate( intval($perPage) )
             ->each(function($item, $key){
@@ -514,9 +519,9 @@ trait MainModelTrait {
      * @param type $perPage
      * @return type
      */
-    public static function paginate( $con = [],$order='',$perPage=10,$having = '')
+    public static function paginate( $con = [],$order='',$perPage=10,$having = '',$field="*")
     {
-        return self::commPaginate($con, $order, $perPage, $having);
+        return self::commPaginate($con, $order, $perPage, $having, $field);
     }
     /**
      * 自带当前公司的列表查询

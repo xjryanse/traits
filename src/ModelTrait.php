@@ -57,8 +57,10 @@ trait ModelTrait {
      */
     public static function hasField( $fieldName )
     {
-        $fields = self::getConnection()->getFields( self::getTable());
-        return isset($fields[$fieldName]);
+        $tableColumns   = DbOperate::columns(self::getTable());
+        $fields    = array_column( $tableColumns,'COLUMN_NAME');
+//        $fields = self::getConnection()->getFields( self::getTable());
+        return in_array($fieldName, $fields);
     }
 
     /**

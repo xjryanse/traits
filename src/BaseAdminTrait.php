@@ -11,7 +11,6 @@ use xjryanse\system\logic\ExportLogic;
 use xjryanse\system\logic\ImportLogic;
 use xjryanse\system\service\SystemColumnListService;
 use xjryanse\system\service\SystemImportAsyncService;
-
 /**
  * 后台系统管理复用，一般需依赖一堆类库
  */
@@ -87,7 +86,7 @@ trait BaseAdminTrait
     {
         if(Request::isAjax()){
             $list               = $this->commListData( $cond );
-            $list['columnInfo'] = $this->columnInfo;            
+//            $list['columnInfo'] = $this->columnInfo;            
             return $this->dataReturn('获取数据',$list);
         }
 //        $this->assign('columnInfo',$this->columnInfo);
@@ -102,7 +101,7 @@ trait BaseAdminTrait
         $uparam     = $this->unsetEmpty($param);
 
         $info       = $this->columnInfo;
-        
+        //运行到此处 1.08s
         $this->debug('xinxi',$info);
         $whereFields     = ColumnLogic::getSearchFields($this->columnInfo);
         $this->debug( '$whereFields',$whereFields );
@@ -120,12 +119,14 @@ trait BaseAdminTrait
         $this->debug( '查询条件con',$con );
         //查询条件缓存（用于导出）
         session($this->conditionCacheKey(),$con);
+        //运行到此处1.56s
         //获取分页列表
         $perPage        = Request::param( 'per_page', 20 );
         $class          = DbOperate::getService( $info['table_name'] );
+        $fields         = ColumnLogic::listFields($this->columnInfo['id']);
         //分页数据
-        $list   = $class::paginate( $con , $info['order_by'] ,$perPage);
-
+        $list   = $class::paginate( $con , $info['order_by'] ,$perPage,"", implode(',', $fields));
+        //运行到此处 3.55s
         //添加额外的数据
         foreach($list['data'] as &$vv){
             //根据不同字段类型，映射不同类库进行数据转换
