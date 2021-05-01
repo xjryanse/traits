@@ -4,6 +4,7 @@ namespace xjryanse\traits;
 use think\Db;
 use think\facade\Request;
 use xjryanse\logic\DbOperate;
+use xjryanse\logic\Debug;
 use xjryanse\logic\Sql;
 use xjryanse\logic\ModelQueryCon;
 use xjryanse\system\logic\ColumnLogic;
@@ -11,6 +12,7 @@ use xjryanse\system\logic\ExportLogic;
 use xjryanse\system\logic\ImportLogic;
 use xjryanse\system\service\SystemColumnListService;
 use xjryanse\system\service\SystemImportAsyncService;
+use Exception;
 /**
  * 后台系统管理复用，一般需依赖一堆类库
  */
@@ -315,6 +317,9 @@ trait BaseAdminTrait
             $res = $class::getInstance( $data['id'] )->update( $data );
             //中间表数据保存
             $this->midSave( $this->columnInfo , $data['id'] ,$data );
+            if(Debug::isDebug()){
+                throw new Exception('测试中');
+            }
             Db::commit();
         }
 
