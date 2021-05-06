@@ -44,6 +44,9 @@ trait SubServiceTrait {
      */
     public static function addSubData( object &$item , $type )
     {
+        if(!$type){
+            return false;
+        }
         //添加形如：表名.字段名的数据
         $subService = self::getSubService( $type );
         return self::addSubServiceData($item, $subService, $item->id);

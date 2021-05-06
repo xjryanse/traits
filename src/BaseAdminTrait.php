@@ -146,7 +146,6 @@ trait BaseAdminTrait
     protected function commAdd()
     {
         $header = $this->commHeader();
-//        dump($header);
         //请求的参数，带入表单
         $data   = Request::param();
         //默认填写当前用户的字段
