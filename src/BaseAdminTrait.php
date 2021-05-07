@@ -25,6 +25,8 @@ trait BaseAdminTrait
     //表id
     protected $admTableId;
     
+    protected $methodKey;
+    
     /**
      * 【1】初始化参数设定
      */
@@ -32,10 +34,10 @@ trait BaseAdminTrait
     {
         //defaultColumn 方法中，会提取cateFieldName的key，来进行过滤字段
         //方法id
-        $methodKey = Request::param('methodKey','') ? : '';
+        $this->methodKey = Request::param('methodKey','') ? : '';
         //方法id作数据隔离
         $cateFieldValues        = Request::param();
-        $this->columnInfo       = $this->getColumnInfo( $cateFieldValues ,$methodKey );
+        $this->columnInfo       = $this->getColumnInfo( $cateFieldValues ,$this->methodKey );
         self::debug('$this->columnInfo',$this->columnInfo);
         //编辑方法才去取
         if(Request::action() == 'edit'){
@@ -54,12 +56,12 @@ trait BaseAdminTrait
      * @param type $cateFieldValues defaultColumn 方法中，会提取cateFieldName的key，来进行过滤字段
      * @return type
      */
-    protected function getColumnInfo( $cateFieldValues = [],$methodKey ='')
+    protected function getColumnInfo( $cateFieldValues = [],$methodKey ='',$data = [])
     {
         $controller             = strtolower( Request::controller() );
         $admKey                 = Request::param('admKey','');
 
-        return ColumnLogic::defaultColumn( $controller, $admKey ,'', $cateFieldValues, $methodKey);
+        return ColumnLogic::defaultColumn( $controller, $admKey ,'', $cateFieldValues, $methodKey, $data);
     }
     
     /**
@@ -88,7 +90,14 @@ trait BaseAdminTrait
     {
         if(Request::isAjax()){
             $list               = $this->commListData( $cond );
-//            $list['columnInfo'] = $this->columnInfo;            
+            $dynFields          = SystemColumnListService::columnTypeFields($this->columnInfo['id'], 'dynenum');
+            $dynDatas = [];
+            foreach($dynFields as $key){
+                $dynDatas[$key] = array_unique(array_column($list['data'],$key));
+            }
+            //方法id作数据隔离
+            $cateFieldValues        = Request::param();
+            $list['columnInfo']     = $this->getColumnInfo( $cateFieldValues ,$this->methodKey, $dynDatas );
             return $this->dataReturn('获取数据',$list);
         }
 //        $this->assign('columnInfo',$this->columnInfo);
