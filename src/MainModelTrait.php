@@ -3,6 +3,7 @@ namespace xjryanse\traits;
 
 use xjryanse\user\logic\AuthLogic;
 use xjryanse\logic\DbOperate;
+use xjryanse\logic\Arrays;
 use xjryanse\system\service\SystemFieldsInfoService;
 use xjryanse\system\service\SystemFieldsManyService;
 use xjryanse\system\service\SystemTableCacheTimeService;
@@ -182,6 +183,9 @@ trait MainModelTrait {
         if(method_exists( __CLASS__, 'extraPreUpdate')){
             self::extraPreUpdate( $data, $data['id']);      
         }
+        //20210520排除虚拟字段
+        $realFieldArr   = DbOperate::realFieldsArr( self::mainModel()->getTable() );
+        $data           = Arrays::getByKeys($data, $realFieldArr);        
         $res = self::mainModel()->update( $data );
         //更新完后执行：类似触发器
         if(method_exists( __CLASS__, 'extraAfterUpdate')){

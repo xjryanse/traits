@@ -7,6 +7,7 @@ use xjryanse\logic\DbOperate;
 use xjryanse\logic\Debug;
 use xjryanse\logic\Sql;
 use xjryanse\logic\ModelQueryCon;
+use xjryanse\logic\Arrays;
 use xjryanse\system\logic\ColumnLogic;
 use xjryanse\system\logic\ExportLogic;
 use xjryanse\system\logic\ImportLogic;
@@ -108,7 +109,7 @@ trait BaseAdminTrait
      */
     protected function commListData( $cond = [] )
     {
-        $param      = Request::param();
+        $param              = Request::param();
         $uparam     = $this->unsetEmpty($param);
 
         $info       = $this->columnInfo;
@@ -116,8 +117,17 @@ trait BaseAdminTrait
         $this->debug('xinxi',$info);
         $whereFields     = ColumnLogic::getSearchFields($this->columnInfo);
         $this->debug( '$whereFields',$whereFields );
-
+        //【通用查询】
         $con        = array_merge( ModelQueryCon::queryCon($uparam, $whereFields) ,$cond);
+        //【特殊查询】：20210513
+        $specialSearchArr   = Request::param('specialSearchArr');
+        if($specialSearchArr){
+            $specialSearchCon   = ModelQueryCon::specialSearchToCon($specialSearchArr);
+            if($specialSearchCon){
+                $con = array_merge($con,$specialSearchCon);
+            }
+        }
+        
         //年月渲染，根据是否设置了字段来判断显示
         if($info['yearmonth_field']){
             $this->yearMonthAssign();
@@ -322,6 +332,8 @@ trait BaseAdminTrait
         foreach($ids as $id){
             $data['id'] = $id;
             Db::startTrans();
+            $realFieldArr = DbOperate::realFieldsArr($this->columnInfo['table_name']);
+            $data = Arrays::getByKeys($data, $realFieldArr);
             $res = $class::getInstance( $data['id'] )->update( $data );
             //中间表数据保存
             $this->midSave( $this->columnInfo , $data['id'] ,$data );
