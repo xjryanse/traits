@@ -44,6 +44,10 @@ trait WePubAuthTrait
             $this->wePubGetToken();         exit;
         }
         $this->wePubUserInfo    = $this->wePubFans->getUserInfo();
+        //没有用户名，再来一次授权
+        if(!$this->wePubUserInfo['nickname']){
+            $this->wePubGetToken('snsapi_userinfo');         exit;
+        }
     }
     /**
      * 只授权账户，不包含用户信息
@@ -72,14 +76,14 @@ trait WePubAuthTrait
     /**
      * 用户授权，获取token
      */
-    private function wePubGetToken()
+    private function wePubGetToken($scope = 'snsapi_base')
     {
         //优先读取Request-Uri参数（兼容vue前后端分离写法），无该参数取当前url
         $url            = Request::header("Request-Uri") ? : Request::url(true);
         //用于微信回调后跳转
         session( SESSION_WEPUB_CALLBACK ,$url);
         //Oauth2Authorize
-        $oauthUrl = $this->wxUrl['Connect']->Oauth2Authorize( $this->wePubAcid );
+        $oauthUrl = $this->wxUrl['Connect']->Oauth2Authorize( $this->wePubAcid ,$scope);
         if(Request::isAjax()){
             header('Content-type: application/json');        
             echo json_encode(['code' => 3001,"msg"=>'请授权登录',"data"=>$oauthUrl]); exit;
