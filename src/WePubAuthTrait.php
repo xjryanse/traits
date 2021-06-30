@@ -2,10 +2,12 @@
 namespace xjryanse\traits;
 
 use think\facade\Request;
+use xjryanse\logic\Url;
 use xjryanse\logic\WxBrowser;
 use xjryanse\system\service\SystemCompanyService;
 use xjryanse\wechat\service\WechatWePubService;
 use xjryanse\wechat\WePub\Fans;
+use xjryanse\logic\Arrays;
 use Exception;
 
 /**
@@ -45,7 +47,7 @@ trait WePubAuthTrait
         }
         $this->wePubUserInfo    = $this->wePubFans->getUserInfo();
         //没有用户名，再来一次授权
-        if(!$this->wePubUserInfo['nickname']){
+        if(!Arrays::value($this->wePubUserInfo,'nickname')){
             $this->wePubGetToken('snsapi_userinfo');         exit;
         }
     }
@@ -68,7 +70,10 @@ trait WePubAuthTrait
         $this->wePubAppId        = $app->appid;
         $this->wePubAppSecret    = $app->secret;
         //②获取用户信息
-        $this->openid       = session( SESSION_OPENID ) ? : Request::param('openid','');
+        $preSessionId       = Request::param('preSessionId') ? : session_id();
+        $this->openid       = cache( 'myOpenid_'.$preSessionId) ? : Request::param('openid','');
+        //会话继承
+        cache( 'myOpenid_'.$preSessionId,$this->openid);
         $this->wePubFans    = new Fans( $this->wePubAcid, $this->openid);
         $this->wxUrl        = $this->wePubFans->wxUrl;
     }
@@ -80,13 +85,16 @@ trait WePubAuthTrait
     {
         //优先读取Request-Uri参数（兼容vue前后端分离写法），无该参数取当前url
         $url            = Request::header("Request-Uri") ? : Request::url(true);
-        //用于微信回调后跳转
-        session( SESSION_WEPUB_CALLBACK ,$url);
+        if(!strstr($url,"#")){
+            $url = $url . '#';
+        }
+        //用于微信回调后跳转，带上sessionid兼容vue会话
+        cache( SESSION_WEPUB_CALLBACK.'_'.session_id() ,Url::addParam($url, ['preSessionId'=>session_id()]));
         //Oauth2Authorize
         $oauthUrl = $this->wxUrl['Connect']->Oauth2Authorize( $this->wePubAcid ,$scope);
         if(Request::isAjax()){
             header('Content-type: application/json');        
-            echo json_encode(['code' => 3001,"msg"=>'请授权登录',"data"=>$oauthUrl]); exit;
+            echo json_encode(['code' => 3001,"msg"=>'请授权登录',"data"=>$oauthUrl,"backUrl"=>$url,"session_id"=>session_id()]); exit;
         } else {
             //非ajax请求，直接跳转链接
             $this->redirect( $oauthUrl );

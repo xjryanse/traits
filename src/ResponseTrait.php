@@ -2,6 +2,7 @@
 namespace xjryanse\traits;
 
 use think\facade\Request;
+use xjryanse\user\service\UserService;
 /**
  * 返回码复用
  */
@@ -12,11 +13,14 @@ trait ResponseTrait
      */
     protected static function succReturn($msg='请求成功',$data = '')
     {
-        $res['code']    = 0;     //20191205 数据返回的基本结构   三个字段   code=0 ,message='提示', data=>{}
-        $res['message'] = $msg;
-        $res['data']    = $data;
-        
-        return json($res);        
+        $res['code']        = 0;     //20191205 数据返回的基本结构   三个字段   code=0 ,message='提示', data=>{}
+        $res['message']     = $msg;
+        $res['data']        = $data;
+        $res['session_id']  = session_id();
+        if(session('recUserId')){
+            $res['recUserInfo'] = UserService::mainModel()->where('id',session('recUserId'))->field('id,nickname')->cache(86400)->find();
+        }
+        return json($res);
     }
     /**
      * 失败返回

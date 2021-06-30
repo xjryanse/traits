@@ -2,7 +2,8 @@
 namespace xjryanse\traits;
 
 use think\Db;
-use think\facade\Request;
+//use think\facade\Request;
+use xjryanse\logic\Request;
 use xjryanse\logic\DbOperate;
 use xjryanse\logic\Debug;
 use xjryanse\logic\Sql;
@@ -60,8 +61,10 @@ trait BaseAdminTrait
     protected function getColumnInfo( $cateFieldValues = [],$methodKey ='',$data = [])
     {
         $controller             = strtolower( Request::controller() );
-        $admKey                 = Request::param('admKey','');
-
+        //优先取路由，路由没有再取参数
+        $admKey                 = Request::route('admKey','') ? : Request::param('admKey','');
+        Debug::debug('getColumnInfo的param信息',Request::route());
+        Debug::debug('getColumnInfo的信息',$controller.'-'.$admKey);
         return ColumnLogic::defaultColumn( $controller, $admKey ,'', $cateFieldValues, $methodKey, $data);
     }
     
@@ -199,7 +202,10 @@ trait BaseAdminTrait
      */
     protected function commGet()
     {
+        Debug::debug('commGet请求参数',Request::param());
+        Debug::debug('commGet路由参数',Request::route());
         $id = Request::param('id',0);
+        Debug::debug('$id',$id);
         if($id){
             $info = $this->columnInfo;
             //表名取服务类
@@ -222,6 +228,7 @@ trait BaseAdminTrait
         $resp = $this->commDataInfo( $res , $this->columnInfo['listInfo'] );
 
         $this->assign('row', $resp );
+        Debug::debug('commEdit的row', $resp );
         //表单类型：添加
         $this->assign('formType', 'edit');
 
@@ -233,6 +240,7 @@ trait BaseAdminTrait
         $this->assign('btnName', '编辑' );
 
         $isLayer = Request::param('isLayer','');                        //弹窗不是新页面
+        Debug::debug('$isLayer', $isLayer );
         if($isLayer){
             return $this->fetch( $this->template ? : 'common/add2');    //加载静态资源
         } else {
@@ -318,6 +326,7 @@ trait BaseAdminTrait
     {
         //取请求字段内容
         $postData           = Request::param();
+        // dump($postData);
         $info               = $this->columnInfo;
         //数据转换
         $data = $this->commDataCov( $postData , $info);

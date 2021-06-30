@@ -47,7 +47,9 @@ trait BaseWebTrait
         //配置项获取
         $this->sysConfigs       = ConfigLogic::getConfigs();
         //推荐人Id
-        $this->recUserId        = Request::param('recUserId','');
+        $this->recUserId        = Request::param('recUserId','') ? : (session('recUserId') ? : '');
+        //推荐人信息存session
+        session('recUserId',$this->recUserId);
         //推荐人信息
         $this->recUserInfo      = $this->recUserId  ? UserService::getInstance($this->recUserId)->get( 60 ) : [] ; 
     }
