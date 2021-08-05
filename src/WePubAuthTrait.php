@@ -8,6 +8,7 @@ use xjryanse\system\service\SystemCompanyService;
 use xjryanse\wechat\service\WechatWePubService;
 use xjryanse\wechat\WePub\Fans;
 use xjryanse\logic\Arrays;
+use xjryanse\logic\Debug;
 use Exception;
 
 /**
@@ -42,6 +43,7 @@ trait WePubAuthTrait
         //授权账户
         $this->initWePubAccount( $acid );
         //没有粉丝token，跳转授权页面
+        Debug::debug('$this->wePubFans',$this->wePubFans);
         if(!$this->wePubFans->token){
             $this->wePubGetToken();         exit;
         }

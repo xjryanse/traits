@@ -2,7 +2,7 @@
 namespace xjryanse\traits;
 
 use think\Db;
-//use think\facade\Request;
+use think\facade\Request as TpRequest;
 use xjryanse\logic\Request;
 use xjryanse\logic\DbOperate;
 use xjryanse\logic\Debug;
@@ -85,14 +85,14 @@ trait BaseAdminTrait
      */
     private function conditionCacheKey()
     {
-        return Request::module().Request::controller().'_con';
+        return TpRequest::module().TpRequest::controller().'_con';
     }
     /**
      * 公共列表页
      */
     protected function commList( $cond = [])
     {
-        if(Request::isAjax()){
+        if(TpRequest::isAjax()){
             $list               = $this->commListData( $cond );
             $dynFields          = SystemColumnListService::columnTypeFields($this->columnInfo['id'], 'dynenum');
             $dynDatas = [];
@@ -100,9 +100,9 @@ trait BaseAdminTrait
                 $dynDatas[$key] = array_unique(array_column($list['data'],$key));
             }
             //方法id作数据隔离
-            $cateFieldValues        = Request::param();
+            $cateFieldValues        = TpRequest::param();
             $list['columnInfo']     = $this->getColumnInfo( $cateFieldValues ,$this->methodKey, $dynDatas );
-            return $this->dataReturn('获取数据',$list);
+            return $this->dataReturn('获取数据',array_merge($list,['params'=>$cateFieldValues]));
         }
 //        $this->assign('columnInfo',$this->columnInfo);
         return $this->fetch( $this->template ? : 'common/list');
@@ -112,7 +112,7 @@ trait BaseAdminTrait
      */
     protected function commListData( $cond = [] )
     {
-        $param              = Request::param();
+        $param              = Request::post();
         $uparam     = $this->unsetEmpty($param);
 
         $info       = $this->columnInfo;
@@ -533,7 +533,8 @@ trait BaseAdminTrait
         
         //表名取服务类
         $class      = DbOperate::getService( $info['table_name'] );
-        $dataInfo   = $class::getInstance( $id )->get( );
+        $realFieldsArr = DbOperate::realFieldsArr( $info['table_name'] );
+        $dataInfo   = $class::mainModel() ->where('id', $id ) ->field(implode(',',$realFieldsArr))->find( );
         $res        = $dataInfo->toArray();
 
         if( isset($res['id'])){ unset($res['id']);}

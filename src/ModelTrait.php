@@ -5,6 +5,7 @@ use xjryanse\logic\SnowFlake;
 use xjryanse\system\service\SystemFileService;
 use xjryanse\logic\DbOperate;
 use xjryanse\logic\ModelQueryCon;
+use xjryanse\logic\Cachex;
 use think\facade\Request;
 use think\Model;
 
@@ -167,9 +168,11 @@ trait ModelTrait {
      */
     public static function setImgVal( $value )
     {
-        if(is_array($value)|| is_object($value)){
+        // || is_object($value)
+        if($value && is_array($value)){
             //isset( $value['id']):单图；否则：多图
-            $value = isset( $value['id']) ? $value['id'] : implode(',',array_column($value, 'id'));
+            //对象转成数组，比较好处理
+            $value = isset( $value['id']) ? $value['id']  : implode(',',array_column($value, 'id'));
         }
         return $value;
     }
@@ -189,11 +192,13 @@ trait ModelTrait {
     public static function getImgVal( $value ,$isMulti = false)
     {
         if($isMulti){
-            $ids    = explode( ',', $value );
+            $ids    = is_array($value) ? $value : explode( ',', $value );
             $con[]  = ['id','in', $ids ];
-            return SystemFileService::mainModel()->where( $con )->field('id,file_path,base64_brief,file_path as rawPath')->cache(86400)->select();
+            return SystemFileService::mainModel()->where( $con )->field('id,file_path,file_path as rawPath')->cache(86400)->select();
         } else {
-            return SystemFileService::mainModel()->where('id', $value )->field('id,file_path,base64_brief,file_path as rawPath')->cache(86400)->find()? : $value ;
+            return Cachex::funcGet('FileData_'.$value, function() use ($value){
+                return SystemFileService::mainModel()->where('id', $value )->field('id,file_path,file_path as rawPath')->cache(86400)->find()? : $value;
+            });
         }
     }
     /**
