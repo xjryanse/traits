@@ -64,7 +64,7 @@ trait WePubAuthTrait
         }
         $this->wePubAcid = $acid;
         //acid查询公众号账户信息
-        $app = WechatWePubService::getInstance($this->wePubAcid)->get();
+        $app = WechatWePubService::getInstance($this->wePubAcid)->getCache();
         if(!$app){
             throw new Exception('公众号不存在,acid:'.$this->wePubAcid);
         }
@@ -95,8 +95,14 @@ trait WePubAuthTrait
         //Oauth2Authorize
         $oauthUrl = $this->wxUrl['Connect']->Oauth2Authorize( $this->wePubAcid ,$scope);
         if(Request::isAjax()){
-            header('Content-type: application/json');        
-            echo json_encode(['code' => 3001,"msg"=>'请授权登录',"data"=>$oauthUrl,"backUrl"=>$url,"session_id"=>session_id()]); exit;
+            header('Content-type: application/json');      
+            $resData['code']    = 3001;
+            $resData['msg']     = '请授权登录';
+            $resData['data']    = $oauthUrl;
+            $resData['backUrl'] = $url;
+            $resData['session_id']  = session_id();
+            $resData['wePubAcid']   = $this->wePubAcid;
+            echo json_encode($resData); exit;
         } else {
             //非ajax请求，直接跳转链接
             $this->redirect( $oauthUrl );

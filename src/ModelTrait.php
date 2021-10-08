@@ -191,13 +191,17 @@ trait ModelTrait {
      */
     public static function getImgVal( $value ,$isMulti = false)
     {
+        if(!$value){
+            return $value;
+        }
         if($isMulti){
             $ids    = is_array($value) ? $value : explode( ',', $value );
             $con[]  = ['id','in', $ids ];
             return SystemFileService::mainModel()->where( $con )->field('id,file_path,file_path as rawPath')->cache(86400)->select();
         } else {
             return Cachex::funcGet('FileData_'.$value, function() use ($value){
-                return SystemFileService::mainModel()->where('id', $value )->field('id,file_path,file_path as rawPath')->cache(86400)->find()? : $value;
+                $info = SystemFileService::mainModel()->where('id', $value )->field('id,file_path,file_path as rawPath')->cache(86400)->find();
+                return $info ? $info->toArray() : $value;
             });
         }
     }

@@ -2,16 +2,18 @@
 namespace xjryanse\traits;
 
 use xjryanse\user\logic\AuthLogic;
-use xjryanse\logic\DbOperate;
 use xjryanse\logic\Arrays;
+use xjryanse\logic\Arrays2d;
+use xjryanse\logic\DbOperate;
+use xjryanse\logic\Debug;
+use xjryanse\logic\Cachex;
 use xjryanse\system\service\SystemFieldsInfoService;
 use xjryanse\system\service\SystemFieldsManyService;
 use xjryanse\system\service\SystemTableCacheTimeService;
-use xjryanse\system\service\SystemFieldsLogTableService;
-use xjryanse\logic\Debug;
-use think\facade\Request;
+//use xjryanse\system\service\SystemFieldsLogTableService;
+use xjryanse\system\service\SystemAsyncTriggerService;
 use think\Db;
-use think\facade\Cache;
+//use think\facade\Cache;
 use Exception;
 /**
  * 主模型复用
@@ -21,6 +23,9 @@ trait MainModelTrait {
 //    protected static $mainModelClass;
     
     protected static $mainModel;
+    //是否直接执行后续触发动作
+    //protected static $directAfter;
+    protected $uuData = [];
     
     public static function mainModel() 
     {
@@ -45,7 +50,12 @@ trait MainModelTrait {
         $tableName = self::mainModel()->getTable();
         return SystemTableCacheTimeService::tableCache( $tableName );
     }
-    
+    /**
+     * 表名
+     */
+    public static function getTable(){
+        return self::mainModel()->getTable();
+    }
     /**
      * 缓存数据更新
      */
@@ -93,6 +103,7 @@ trait MainModelTrait {
      */
     protected static function preSaveData( &$data )
     {
+        Debug::debug('预保存数据$data',$data);
         if(!isset($data['id'])|| !$data['id']){
             $data['id'] = self::mainModel()->newId();
         }
@@ -141,21 +152,27 @@ trait MainModelTrait {
         }
         //保存
         $res = self::mainModel()->create( $data );
+        $resp = $res ? $res ->toArray() : [];
         //更新完后执行：类似触发器
         if(method_exists( __CLASS__, 'extraAfterSave')){
-            $resp = $res ? $res ->toArray() : [];
-            self::extraAfterSave( $resp, $data['id']);      
+            //20210821，改异步
+            //$resp = $res ? $res ->toArray() : [];
+            //self::extraAfterSave( $resp, $data['id']);     
+            if(session(SESSION_DIRECT_AFTER) || (property_exists(__CLASS__, 'directAfter') && self::$directAfter)){
+                self::extraAfterSave( $resp, $data['id']);                      
+            } else {
+                $fromTable = self::mainModel()->getTable();
+                $addTask = SystemAsyncTriggerService::addTask('save', $fromTable, $data['id']);
+                Debug::debug('extraAfterSave',$addTask);
+            }
         }
-        //20210311记录更新日志        
-        SystemFieldsLogTableService::tableLog( self::mainModel()->getTable(), [], $data );
-        //清缓存
-        if(SystemTableCacheTimeService::tableHasLog(self::mainModel()->getTable())){
-            Cache::clear();
-        }
-        if($res){
-            Debug::debug('$res', $res);
-            self::_cacheUpdate($res['id']);
-        }
+//        //20210311记录更新日志        TODO调整为异步
+//        // SystemFieldsLogTableService::tableLog( self::mainModel()->getTable(), [], $data );
+//        //清缓存
+//        if(SystemTableCacheTimeService::tableHasLog(self::mainModel()->getTable())){
+//            Cache::clear();
+//            self::_cacheUpdate($res['id']);
+//        }
         return $res;        
     }
     /**
@@ -187,21 +204,32 @@ trait MainModelTrait {
         $realFieldArr   = DbOperate::realFieldsArr( self::mainModel()->getTable() );
         $data           = Arrays::getByKeys($data, $realFieldArr);        
         $res = self::mainModel()->update( $data );
+        if($res){
+            // 设定内存中的值
+            $this->setUuData($data);
+        }
+
         //更新完后执行：类似触发器
         if(method_exists( __CLASS__, 'extraAfterUpdate')){
-            $resp = $res ? $res ->toArray() : [];
-            self::extraAfterUpdate( $resp, $data['id']);
+            if(session(SESSION_DIRECT_AFTER) || (property_exists(__CLASS__, 'directAfter') && self::$directAfter)){
+                $resp = $res ? $res ->toArray() : [];
+                // 更新实例值
+                self::getInstance($data['id'])->setUuData($data);  
+                self::extraAfterUpdate( $resp, $data['id']);                      
+            } else {
+                //20210821改异步
+                $fromTable = self::mainModel()->getTable();
+                $addTask = SystemAsyncTriggerService::addTask('update', $fromTable, $data['id']);
+                Debug::debug('extraAfterUpdate',$addTask);
+            }
         }
-        //20210311记录更新日志
-        SystemFieldsLogTableService::tableLog( self::mainModel()->getTable(), $info, $data );
-        //清缓存
-        if(SystemTableCacheTimeService::tableHasLog(self::mainModel()->getTable())){
-            Cache::clear();
-        }
+//        //20210311记录更新日志
+//        SystemFieldsLogTableService::tableLog( self::mainModel()->getTable(), $info, $data );
+//        //清缓存
+//        if(SystemTableCacheTimeService::tableHasLog(self::mainModel()->getTable())){
+//            Cache::clear();
+//        }
         
-        if($res){
-            self::_cacheUpdate( $this->uuid );
-        }
         return $res;
     }
     /**
@@ -241,9 +269,9 @@ trait MainModelTrait {
         }        
         
         $res = self::mainModel()->where('id',$this->uuid)->delete( );
-        if($res){
-            self::_cacheUpdate( $this->uuid );
-        }        
+//        if($res){
+//            self::_cacheUpdate( $this->uuid );
+//        }        
         return $res;
     }
     
@@ -255,21 +283,24 @@ trait MainModelTrait {
     /*
      * 批量保存
      */
-    public static function saveAll ( array $data ,$preData=[])
+    public static function saveAll ( array &$data ,$preData=[])
     {
         $tmpArr = [];
-        foreach( $data as $v){
+        foreach( $data as &$v){
             $tmpData        = array_merge($preData,$v) ;
             //预保存数据
             $tmpArr[] = self::preSaveData( $tmpData );
         }
         //saveAll方法新增数据默认会自动识别数据是需要新增还是更新操作，当数据中存在主键的时候会认为是更新操作，如果你需要带主键数据批量新增，可以使用下面的方式
         $res = self::mainModel()->saveAll( $tmpArr ,false );
-        foreach( $tmpArr as $v){
-            if(isset($v['id']) && $v['id']){
-                self::_cacheUpdate($v['id']);
-            }
-        }
+//        // 是否需要处理缓存数据
+//        if($dealCache){
+//            foreach( $tmpArr as $v){
+//                if(isset($v['id']) && $v['id']){
+//                    self::_cacheUpdate($v['id']);
+//                }
+//            }
+//        }
         return $res;
     }
     /**
@@ -351,14 +382,25 @@ trait MainModelTrait {
      * @param type $default     默认值
      * @return type
      */
-    public function fieldValue( $fieldName, $default='',$cache = -1)
+    public function fieldValue( $fieldName, $default='')
     {
-        //如果cache小于-1，表示外部没有传cache,取配置的cache值
-        $cache = $cache <0 ? self::defaultCacheTime() : $cache;
-        $info = $this->get( $cache );
-        return ($info && isset($info[ $fieldName ])) 
-            ? $info[ $fieldName ] 
-            : $default;
+        //如果是定值；有缓存取缓存；无缓存再从数据库取值
+        if( (property_exists(__CLASS__, 'fixedFields') && in_array($fieldName, self::$fixedFields)) ){
+            $tableName = self::mainModel()->getTable();
+            $cacheKey = $tableName.'-'.$this->uuid.'-'.$fieldName;
+            return Cachex::funcGet($cacheKey, function() use ($fieldName, $default){
+                return $this->fieldValueFromDb($fieldName,$default);
+            });
+        } else {
+            return $this->fieldValueFromDb($fieldName,$default);
+        }
+    }
+    /**
+     * 从数据库取新值
+     */
+    private function fieldValueFromDb($fieldName, $default = ''){
+        $info = $this->get();
+        return Arrays::value($info, $fieldName, $default);
     }
     /**
      * 获取f开头的驼峰方法名字段信息
@@ -393,9 +435,9 @@ trait MainModelTrait {
         $con[] = [ 'id' ,'=',$this->uuid ];
         $res = $this->update([$key=>$aftValue]);
 //        $res = self::mainModel()->where( $con )->update([$key=>$aftValue]);
-        if($res){
-            self::_cacheUpdate( $this->uuid );
-        }
+//        if($res){
+//            self::_cacheUpdate( $this->uuid );
+//        }
         //更新缓存
         return $res;
     }
@@ -410,9 +452,12 @@ trait MainModelTrait {
         $res = $this->commDelete();
         //删除后
         if(method_exists( __CLASS__, 'extraAfterDelete')){
-            $this->extraAfterDelete();      //注：id在preSaveData方法中生成
+            //20210821改异步
+            // $this->extraAfterDelete();      //注：id在preSaveData方法中生成
+            $fromTable = self::mainModel()->getTable();
+            SystemAsyncTriggerService::addTask('delete', $fromTable, $this->uuid);
         }
-        
+
         return $res;
     }
     /**************************查询方法********************************/
@@ -426,7 +471,14 @@ trait MainModelTrait {
         Debug::debug( 'commLists查询sql', $conAll );
         //字段加索引
         self::condAddColumnIndex( $con );
-        return self::mainModel()->where( $conAll )->order($order)->field($field)->cache( $cache )->select();
+        $res = self::mainModel()->where( $conAll )->order($order)->field($field)->cache( $cache )->select();
+        // 查询出来了直接存
+        if($field == "*"){
+            foreach($res as &$v){
+                self::getInstance($v['id'])->setUuData($v,true);  //强制写入
+            }            
+        }
+        return $res;
     }
     
     public static function lists( $con = [],$order='',$field="*" ,$cache = -1 )
@@ -437,9 +489,25 @@ trait MainModelTrait {
         return self::commLists($con, $order, $field,$cache)->each(function($item, $key){
                 //额外添加详情信息：固定为extraDetail方法
                 if(method_exists( __CLASS__, 'extraDetail')){
-                    self::extraDetail($item, $item->id);
+                    self::extraDetail($item, $item['id']);
                 }
             });
+    }
+    /**
+     * 查询列表，并写入get
+     * @param type $con
+     */
+    public static function listSetUudata($con = [], $master = false){
+        if($master) {
+            $lists = self::mainModel()->master()->where($con)->select();
+        } else {
+            $lists = self::mainModel()->where($con)->select();
+        }
+        //写入内存
+        foreach($lists as $v){
+            self::getInstance($v['id'])->setUuData($v,true);  //强制写入
+        }
+        return $lists;
     }
     
     /**
@@ -451,6 +519,7 @@ trait MainModelTrait {
      */
     protected static function commPaginate( $con = [],$order='',$perPage=10,$having = '',$field = "")
     {
+        $hasExtraDetails = method_exists( __CLASS__, 'extraDetails');
         //默认带数据权限
         $conAll = array_merge( $con ,self::commCondition() );
         //如果数据权限没记录，尝试去除数据权限进行搜索
@@ -465,7 +534,9 @@ trait MainModelTrait {
         //如果cache小于-1，表示外部没有传cache,取配置的cache值
         $cache = self::defaultCacheTime();
         $inst = self::mainModel()->where( $conAll )->order($order);
-        if( $field ){
+        if($hasExtraDetails){
+            $inst->field('id');
+        } else if( $field ){
             $inst->field($field);
         }
         $res = $inst->having($having)
@@ -474,11 +545,22 @@ trait MainModelTrait {
             ->each(function($item, $key){
                 //额外添加详情信息：固定为extraDetail方法
                 if(method_exists( __CLASS__, 'extraDetail')){
-                    self::extraDetail($item, $item->id);
+                    self::extraDetail($item, $item['id']);
                 }
             });
+        $result = $res->toArray();
+        //20210912,逐步替代 extraDetail方法；额外添加详情信息：固定为extraDetail方法
+        if(method_exists( __CLASS__, 'extraDetails')){
+            $extraDetails = self::extraDetails(array_column($result['data'], 'id'));
+            //id 设为键
+            $extraDetailsObj = Arrays2d::fieldSetKey($extraDetails, 'id');
+            foreach($result['data'] as &$v){
+                $v = $extraDetailsObj[$v['id']];
+            }
+        }
+        
 //        $res['con'] = $conAll;
-        return $res ? array_merge($res->toArray(),['con'=>$conAll]) : [] ;                
+        return $res ? array_merge($result,['con'=>$conAll]) : [] ;                
     }
     
     /**
@@ -576,13 +658,11 @@ trait MainModelTrait {
      */
     public static function ids( $con = [])
     {
-        if(self::mainModel()->hasField('app_id')){
-            $con[] = ['app_id','=',session(SESSION_APP_ID)];
-        }
+        $conAll = array_merge( $con ,self::commCondition() );
         //字段加索引
         self::condAddColumnIndex( $con );
         
-        return self::mainModel()->where( $con )->cache(2)->column('id');
+        return self::mainModel()->where( $conAll )->cache(2)->column('id');
     }
     /**
      * 根据条件返回字段数组
@@ -634,29 +714,74 @@ trait MainModelTrait {
         
         return self::mainModel()->where( $con )->sum( $field );
     }    
-    
-    public function commGet($cache = 5)
+    /**
+     * 
+     * @param type $master  是否从主库获取
+     * @return type
+     */
+    public function commGet( $master = false )
     {
-        if( $cache && cache(self::_cacheKey($this->uuid)) ){
-            return cache(self::_cacheKey($this->uuid));
+        $con[] = ['id','=',$this->uuid];
+        if(self::mainModel()->hasField('is_delete')){
+            $con[] = ['is_delete','=',0];
         }
-        $res = self::mainModel()->where('id',$this->uuid)->find();
-        //存缓存
-        if($res){
-            cache(self::_cacheKey($this->uuid),$res);
+        if($master){
+            return self::mainModel()->master()->where($con)->find();
+        } else {
+            return self::mainModel()->where($con)->find();
         }
-        return $res;        
     }
     /**
      * 
-     * @param type $cache   cache为0，直接读数据库
+     * @param type $master   $master  是否从主库获取
      * @return type
      */
-    public function get( $cache = -1 )
+    public function get( $master = false )
     {
-        //如果cache小于-1，表示外部没有传cache,取配置的cache值
-        $cache = $cache <0 ? self::defaultCacheTime() : $cache;
-        return $this->commGet($cache);
+        if(!$this->uuData){
+            if(property_exists(__CLASS__, 'getCache') && self::$getCache){
+                // 有缓存的
+                $tableName = self::mainModel()->getTable();
+                $cacheKey  = 'mainModelGet_'.$tableName.'-'.$this->uuid;
+                $this->uuData = Cachex::funcGet($cacheKey, function() use ($master){
+                    return $this->commGet( $master );
+                });
+            } else {
+                //没有缓存的
+                $this->uuData = $this->commGet( $master );
+            }
+        }
+        return $this->uuData;
+    }
+    /**
+     * 批量获取
+     */
+    public static function batchGet($ids, $keyField="id", $field = "*"){
+        $con[] = ['id','in',$ids];
+        $lists = self::mainModel()->where($con)->field($field)->select();
+        $listsArr = $lists->toArray();
+        $listsArrObj = Arrays2d::fieldSetKey($listsArr, $keyField);
+        foreach($listsArrObj as $k=>$v){
+            self::getInstance($k)->setUuData($v,true);  //强制写入
+        }
+        return $listsArrObj;
+    }
+    /**
+     * 修改数据时，同步调整实例内的数据
+     * @param type $newData
+     * @param type $force       数据不存在时，是否强制写入（用于从其他渠道获取的数据，直接赋值，不走get方法）
+     * @return type
+     */
+    public function setUuData($newData, $force = false){
+        //强制写入模式，直接赋值
+        if($force){
+            $this->uuData = $newData;
+        } else if($this->uuData){
+            foreach($newData as $key=>$value){
+                $this->uuData[$key] = $value;
+            }
+        }
+        return $this->uuData;
     }
     
     protected static function commExtraDetail( &$item ,$id ){
@@ -738,9 +863,14 @@ trait MainModelTrait {
         $item = $cache
                 ? $inst->cache( $cache )->find()
                 : $inst->find();
+        //写入内存
+        if($item){
+            self::getInstance($item['id'])->setUuData($item);
+        }
+
         //额外添加详情信息：固定为extraDetail方法
         if(method_exists( __CLASS__, 'extraDetail')){
-            self::extraDetail($item, $item->id);
+            self::extraDetail($item, $item['id']);
         }
         return $item;
     }

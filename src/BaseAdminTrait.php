@@ -12,6 +12,7 @@ use xjryanse\logic\Arrays;
 use xjryanse\system\logic\ColumnLogic;
 use xjryanse\system\logic\ExportLogic;
 use xjryanse\system\logic\ImportLogic;
+use xjryanse\system\service\SystemColumnService;
 use xjryanse\system\service\SystemColumnListService;
 use xjryanse\system\service\SystemImportAsyncService;
 use Exception;
@@ -95,13 +96,19 @@ trait BaseAdminTrait
         if(TpRequest::isAjax()){
             $list               = $this->commListData( $cond );
             $dynFields          = SystemColumnListService::columnTypeFields($this->columnInfo['id'], 'dynenum');
-            $dynDatas = [];
+            $dynDatas           = [];
             foreach($dynFields as $key){
                 $dynDatas[$key] = array_unique(array_column($list['data'],$key));
             }
             //方法id作数据隔离
             $cateFieldValues        = TpRequest::param();
             $list['columnInfo']     = $this->getColumnInfo( $cateFieldValues ,$this->methodKey, $dynDatas );
+            //动态枚举的选项
+            $controller = strtolower( Request::controller() );
+            $admKey     = Request::route('admKey','') ? : Request::param('admKey','');
+            $columnId = SystemColumnService::paramGetId($controller,$admKey);
+            $list['dynDataList']    = SystemColumnListService::dynDataList($columnId, $dynDatas);
+
             return $this->dataReturn('获取数据',array_merge($list,['params'=>$cateFieldValues]));
         }
 //        $this->assign('columnInfo',$this->columnInfo);
@@ -319,6 +326,23 @@ trait BaseAdminTrait
         return $this->dataReturn('数据保存',$res);
     }
 
+    protected function commSaveAll(){
+        $postData           = Request::param('table_data',[]);
+        if(!$postData){
+            return $this->errReturn('数据table_data必须');
+        }
+        $info               = $this->columnInfo;
+        //数据转换
+        foreach($postData as &$value){
+            $value = $this->commDataCov( $value , $info);
+        }
+        //表名取服务类
+        $class  = DbOperate::getService( $info['table_name'] );
+        Db::startTrans();
+        $res = $class::saveAll($postData);
+        Db::commit();
+        return $this->dataReturn('批量保存',$res);
+    }
     /**
      * 公共保存接口
      */
@@ -401,9 +425,13 @@ trait BaseAdminTrait
                 //枚举项导出                
                 $str = Sql::buildCaseWhen($v['name'], $v['option'], $v['label']) ;
             } else if( $v['name'] ){
-                $str = ' concat('. $v['name'].",'\t') ";
+                $str = ' concat(`'. $v['name']."`,'\t') ";
             }
             $fields[] = $str . "as `".$v['label']."`";
+        }
+        $service = DbOperate::getService( $this->columnInfo['table_name'] );
+        if($service::mainModel()->hasField('company_id')){
+            $con[] = ['company_id','=',session(SESSION_COMPANY_ID)];
         }
 
         $field = implode(',',$fields);
@@ -645,8 +673,8 @@ trait BaseAdminTrait
     {
         //role_id,access_id等类型
         foreach( $listInfo as $v){
-            //非新增且非编辑的字段不处理
-            if(!$v['is_add'] && !$v['is_edit']){
+            //非新增且非编辑的字段不处理；20210908字段不存在的也不处理
+            if((!$v['is_add'] && !$v['is_edit']) || !isset($data[$v['name']]) ){
                 continue;
             }
             //根据不同字段类型，映射不同类库进行数据转换
