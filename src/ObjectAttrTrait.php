@@ -3,11 +3,14 @@ namespace xjryanse\traits;
 
 use xjryanse\logic\Arrays;
 use xjryanse\logic\Debug;
+use Exception;
 /**
  * 对象属性复用
  * (配置式数据表)
  */
 trait ObjectAttrTrait {
+    
+    public static $attrTimeCount   = 0 ;   //末个节点执行次数
     // // 定义对象的属性
     // protected $objAttrs = [];
     // // 定义对象是否查询过的属性
@@ -24,7 +27,7 @@ trait ObjectAttrTrait {
     /**
      * 对象属性列表
      */
-    public function objAttrsList( $key ){
+    public function objAttrsList( $key ){        
         if(!Arrays::value($this->objAttrs, $key) && !Arrays::value($this->hasObjAttrQuery,$key)){
             // 取配置
             $config = Arrays::value(self::$objAttrConf, $key);
@@ -57,12 +60,33 @@ trait ObjectAttrTrait {
         $this->objAttrs[$key]           = $data;
         $this->hasObjAttrQuery[$key]    = true;            
     }
+    
+    /**
+     * 20220619:删除对象属性
+     * @param type $key
+     * @param type $id  主键
+     */
+    public function objAttrsUnSet( $key, $id){
+        if((!$this->objAttrs || is_null($this->objAttrs[$key])) && !Arrays::value($this->hasObjAttrQuery,$key) ){
+            $this->objAttrsList($key);
+        }
+        
+        foreach($this->objAttrs[$key] as $k=>$v){
+            if($v['id'] == $id){
+                unset($this->objAttrs[$key][$k]);
+            }
+        }     
+    }
     /**
      * 新增对象属性;用于数据库中添加后，内存中同步添加
      * @param type $key
      * @param type $data
      */
     public function objAttrsPush( $key, $data){
+        if((!$this->objAttrs || is_null($this->objAttrs[$key])) && !Arrays::value($this->hasObjAttrQuery,$key) ){
+            $this->objAttrsList($key);
+        }
+        
         if(Arrays::value($this->hasObjAttrQuery,$key)){
             //有节点，往节点末尾追加
             $this->objAttrs[$key][] = $data;
@@ -75,12 +99,20 @@ trait ObjectAttrTrait {
      * @param type $data
      */
     public function objAttrsUpdate( $key, $dataId, $data){
-        if(Arrays::value($this->hasObjAttrQuery,$key)){            
-            //有节点，往节点末尾追加
-            foreach($this->objAttrs[$key] as &$v){
-                if($v['id'] == $dataId){
-                    $v = array_merge($v,$data);
+        if((!$this->objAttrs || is_null($this->objAttrs[$key])) && !Arrays::value($this->hasObjAttrQuery,$key) ){
+            $this->objAttrsList($key);
+        }
+        //有节点，往节点末尾追加
+        foreach($this->objAttrs[$key] as &$v){
+            if($v['id'] == $dataId){
+                //20220622:TODO;
+                if(is_object($v)){
+                    $v = $v->toArray();
                 }
+                if(is_object($data)){
+                    $data = $data->toArray();
+                }
+                $v = array_merge($v,$data);
             }
         }
     }    

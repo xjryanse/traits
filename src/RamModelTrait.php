@@ -1,31 +1,30 @@
 <?php
 namespace xjryanse\traits;
 
-use xjryanse\logic\Cachex;
 use xjryanse\logic\Arrays;
 use xjryanse\logic\Arrays2d;
 /**
- * 静态模型复用
+ * 基于内存的数据查询处理
+ * 20220702
  * (配置式数据表)
  */
-trait StaticModelTrait {
+trait RamModelTrait {
+    // 全量数据清单
+    public static $ramList = [];
     // 全量加载数据
-    public static function staticListsAll($companyId = ''){
+    public static function ramListsAll($companyId = ''){
         // TODO 优化跨端取数据情况
         if(!$companyId){
             $companyId = session(SESSION_COMPANY_ID);
         }
-        $tableName  = self::mainModel()->getTable();
-        $key        = $tableName.'_'.__METHOD__.$companyId;
-        return Cachex::funcGet( $key, function() use ($companyId){
+        if(!self::$ramList){
             $con = [];
             if($companyId && self::mainModel()->hasField('company_id')){
                 $con[] = ['company_id','=',$companyId];
             }
-//            $lists = self::mainModel()->where($con)->select();
-//            return $lists ? $lists->toArray() : [] ;
-            return self::selectX($con);
-        });
+            self::$ramList =  self::selectX($con);
+        }
+        return self::$ramList;
     }
     /**
      * 条件查询(list)
@@ -33,8 +32,8 @@ trait StaticModelTrait {
      * @param type $companyId
      * @return type
      */
-    public static function staticConList($con = [],$companyId = '',$sort="",$field=[]){
-        $listsAll = self::staticListsAll($companyId);
+    public static function ramConList($con = [],$companyId = '',$sort="",$field=[]){
+        $listsAll = self::ramListsAll($companyId);
         $res = Arrays2d::listFilter($listsAll, $con);
         if($sort){
             $res = Arrays2d::sort($res, 'sort');
@@ -50,8 +49,8 @@ trait StaticModelTrait {
      * @param type $companyId
      * @return type
      */
-    public static function staticConCount($con = [],$companyId = ''){
-        $listsAll = self::staticListsAll($companyId);
+    public static function ramConCount($con = [],$companyId = ''){
+        $listsAll = self::ramListsAll($companyId);
         $res = Arrays2d::listFilter($listsAll, $con);
         return count($res);
     }
@@ -61,8 +60,8 @@ trait StaticModelTrait {
      * @param type $companyId
      * @return type
      */
-    public static function staticConFind($con = [],$companyId = ''){
-        $listsAll = self::staticListsAll($companyId);
+    public static function ramConFind($con = [],$companyId = ''){
+        $listsAll = self::ramListsAll($companyId);
         foreach($listsAll as $data){
             if(Arrays::isConMatch($data, $con)){
                 return $data;
@@ -75,8 +74,8 @@ trait StaticModelTrait {
      * @param type $con
      * @param type $companyId
      */
-    public static function staticConColumn($field, $con = [],$companyId = ''){
-        $listsAll = self::staticListsAll($companyId);
+    public static function ramConColumn($field, $con = [],$companyId = ''){
+        $listsAll = self::ramListsAll($companyId);
         // 过滤后的数组
         $listFilter =  Arrays2d::listFilter($listsAll, $con);
         $fields = explode(',', $field);
@@ -89,13 +88,12 @@ trait StaticModelTrait {
         }
     }
     
-    
     /**
      * 静态get方法
      */
-    public function staticGet($companyId = ''){
+    public function ramGet($companyId = ''){
         $con[] = ['id','=',$this->uuid];
-        $info = self::staticConFind($con, $companyId);
+        $info = self::ramConFind($con, $companyId);
         return $info;
     }
 }

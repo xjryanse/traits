@@ -6,6 +6,7 @@ use xjryanse\logic\Url;
 use xjryanse\logic\WxBrowser;
 use xjryanse\system\service\SystemCompanyService;
 use xjryanse\wechat\service\WechatWePubService;
+use xjryanse\wechat\service\WechatWePubFansService;
 use xjryanse\wechat\WePub\Fans;
 use xjryanse\logic\Arrays;
 use xjryanse\logic\Debug;
@@ -48,6 +49,7 @@ trait WePubAuthTrait
             $this->wePubGetToken();         exit;
         }
         $this->wePubUserInfo    = $this->wePubFans->getUserInfo();
+        //dump($this->wePubUserInfo);exit;
         //没有用户名，再来一次授权
         if(!Arrays::value($this->wePubUserInfo,'nickname')){
             $this->wePubGetToken('snsapi_userinfo');         exit;
@@ -68,14 +70,15 @@ trait WePubAuthTrait
         if(!$app){
             throw new Exception('公众号不存在,acid:'.$this->wePubAcid);
         }
-        
+
         $this->wePubAppId        = $app->appid;
         $this->wePubAppSecret    = $app->secret;
         //②获取用户信息
         $preSessionId       = Request::param('preSessionId') ? : session_id();
-        $this->openid       = cache( 'myOpenid_'.$preSessionId) ? : Request::param('openid','');
+        $openidCacheKey     = WechatWePubFansService::openidCacheKey($preSessionId);
+        $this->openid       = session($openidCacheKey) ? : cache($openidCacheKey);
         //会话继承
-        cache( 'myOpenid_'.$preSessionId,$this->openid);
+        session( $openidCacheKey, $this->openid );
         $this->wePubFans    = new Fans( $this->wePubAcid, $this->openid);
         $this->wxUrl        = $this->wePubFans->wxUrl;
     }
@@ -105,7 +108,12 @@ trait WePubAuthTrait
             echo json_encode($resData); exit;
         } else {
             //非ajax请求，直接跳转链接
-            $this->redirect( $oauthUrl );
+            if(Debug::isDebug()){
+                echo '<a href="'.$oauthUrl.'">授权链接</a>';
+                dump($oauthUrl);exit;
+            } else {
+                $this->redirect( $oauthUrl );
+            }
         }
     }    
     

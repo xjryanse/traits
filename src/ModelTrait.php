@@ -4,6 +4,7 @@ namespace xjryanse\traits;
 use xjryanse\logic\SnowFlake;
 use xjryanse\system\service\SystemFileService;
 use xjryanse\logic\DbOperate;
+use xjryanse\logic\Debug;
 use xjryanse\logic\ModelQueryCon;
 use xjryanse\logic\Cachex;
 use think\facade\Request;
@@ -59,7 +60,7 @@ trait ModelTrait {
     public static function hasField( $fieldName )
     {
         $tableColumns   = DbOperate::columns(self::getTable());
-        $fields    = array_column( $tableColumns,'COLUMN_NAME');
+        $fields    = array_column( $tableColumns,'Field');
 //        $fields = self::getConnection()->getFields( self::getTable());
         return in_array($fieldName, $fields);
     }
@@ -163,6 +164,7 @@ trait ModelTrait {
         $newId = SnowFlake::generateParticle();
         return strval($newId);
     }
+
     /**
      * 图片修改器取值
      */
@@ -197,10 +199,14 @@ trait ModelTrait {
         if($isMulti){
             $ids    = is_array($value) ? $value : explode( ',', $value );
             $con[]  = ['id','in', $ids ];
-            return SystemFileService::mainModel()->where( $con )->field('id,file_path,file_path as rawPath')->cache(86400)->select();
+            $res = SystemFileService::mainModel()->where( $con )->field('id,file_type,file_path,file_path as rawPath')->cache(86400)->select();
+            Debug::debug('获取图片地址Sql',SystemFileService::mainModel()->getLastSql());
+            return $res ? $res->toArray() : $value;
         } else {
+            Debug::debug('获取图片',$value);
             return Cachex::funcGet('FileData_'.$value, function() use ($value){
-                $info = SystemFileService::mainModel()->where('id', $value )->field('id,file_path,file_path as rawPath')->cache(86400)->find();
+                $info = SystemFileService::mainModel()->where('id', $value )->field('id,file_type,file_path,file_path as rawPath')->cache(86400)->find();
+                Debug::debug('获取图片地址',$info);
                 return $info ? $info->toArray() : $value;
             });
         }
