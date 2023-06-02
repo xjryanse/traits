@@ -14,12 +14,14 @@ trait RequestTrait
      * @return type
      */
     protected function unsetEmpty( &$param ){
-        foreach($param as $k=>&$v){
-            if(!is_array($v) && !strlen($v)){
-                unset($param[$k]);
-            }
-            if(is_array($v)){
-                $this->unsetEmpty( $v);
+        if(is_array($param)){
+            foreach($param as $k=>&$v){
+                if(!is_array($v) && !strlen($v)){
+                    unset($param[$k]);
+                }
+                if(is_array($v)){
+                    $this->unsetEmpty( $v);
+                }
             }
         }
         return $param;

@@ -58,6 +58,7 @@ trait BaseWebTrait
      */
     protected function initWebAssign()
     {
+        /*
         //继承参数渲染
         $this->assign( 'paramInherit', $this->paramInherit );
         //comKey：公司key
@@ -74,6 +75,7 @@ trait BaseWebTrait
         $this->assign( 'recUserId', $this->recUserId );
         //推荐人信息
         $this->assign( 'recUserInfo', $this->recUserInfo );
+         */
     }
 
 }

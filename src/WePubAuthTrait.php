@@ -65,14 +65,15 @@ trait WePubAuthTrait
             $acid = SystemCompanyService::getInstance( session(SESSION_COMPANY_ID) )->fWePubId();
         }
         $this->wePubAcid = $acid;
+        Debug::debug('$this->wePubAcid', $this->wePubAcid);
         //acid查询公众号账户信息
         $app = WechatWePubService::getInstance($this->wePubAcid)->getCache();
         if(!$app){
-            throw new Exception('公众号不存在,acid:'.$this->wePubAcid);
+            throw new Exception( session(SESSION_COMPANY_ID) . '公众号不存在,acid:'.$this->wePubAcid );
         }
 
-        $this->wePubAppId        = $app->appid;
-        $this->wePubAppSecret    = $app->secret;
+        $this->wePubAppId        = $app['appid'];
+        $this->wePubAppSecret    = $app['secret'];
         //②获取用户信息
         $preSessionId       = Request::param('preSessionId') ? : session_id();
         $openidCacheKey     = WechatWePubFansService::openidCacheKey($preSessionId);
@@ -94,7 +95,9 @@ trait WePubAuthTrait
             $url = $url . '#';
         }
         //用于微信回调后跳转，带上sessionid兼容vue会话
-        cache( SESSION_WEPUB_CALLBACK.'_'.session_id() ,Url::addParam($url, ['preSessionId'=>session_id()]));
+        // cache( SESSION_WEPUB_CALLBACK.'_'.session_id() ,Url::addParam($url, ['preSessionId'=>session_id()]));
+        // 20230430:因上海X展bug,前端改用initSessionId
+        cache( SESSION_WEPUB_CALLBACK.'_'.session_id() ,Url::addParam($url, ['initSessionId'=>session_id()]));
         //Oauth2Authorize
         $oauthUrl = $this->wxUrl['Connect']->Oauth2Authorize( $this->wePubAcid ,$scope);
         if(Request::isAjax()){

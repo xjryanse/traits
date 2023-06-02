@@ -11,14 +11,16 @@ use xjryanse\logic\Debug;
 use xjryanse\logic\Cachex;
 use xjryanse\system\service\SystemColumnService;
 use xjryanse\system\service\SystemColumnListService;
-use xjryanse\system\service\SystemFieldsInfoService;
-use xjryanse\system\service\SystemFieldsManyService;
+// use xjryanse\system\service\SystemFieldsInfoService;
+// use xjryanse\system\service\SystemFieldsManyService;
 use xjryanse\system\service\SystemTableCacheTimeService;
 use xjryanse\system\service\SystemAsyncTriggerService;
+use xjryanse\system\service\SystemColumnListForeignService;
 use xjryanse\finance\service\FinanceTimeService;
+use app\system\AsyncOperate\SendTemplateMsg;
 use think\facade\Request;
 use think\Db;
-//use think\facade\Cache;
+use think\facade\Cache;
 use Exception;
 
 /**
@@ -37,7 +39,9 @@ trait MainModelTrait {
         throw new Exception('$queryCount 次数超限'.$limitTimes);
     }
      */
-    public static $queryCount   = 0 ;   //末个节点执行次数
+    public static $queryCount       = 0 ;   //末个节点执行次数
+    //20220803优化
+    public static $queryCountArr    = [] ;   //末个节点执行次数
 
     protected static $mainModel;
     //是否直接执行后续触发动作
@@ -53,11 +57,27 @@ trait MainModelTrait {
         }
         return self::$mainModel;
     }
+    /**
+     * 20230601
+     * @return type
+     */
+    public static function mainModelClass(){
+        return self::$mainModelClass;
+    }
 
     public function __call($method, $ages) {
         //首字母f，且第二个字母大写，表示字段
 
         return $method . '不存在';
+    }
+    /**
+     * 20220921 主模型带where参数
+     */
+    public static function where($con = []){
+        if (self::mainModel()->hasField('company_id')) {
+            $con[] = ['company_id', '=', session(SESSION_COMPANY_ID)];
+        }
+        return self::mainModel()->where($con);
     }
 
     /**
@@ -74,23 +94,6 @@ trait MainModelTrait {
      */
     public static function getTable() {
         return self::mainModel()->getTable();
-    }
-
-    /**
-     * 缓存数据更新
-     */
-    protected static function _cacheUpdate($id) {
-        self::getInstance($id)->get(0);
-    }
-
-    /**
-     * 获取缓存key
-     * @param type $id
-     * @return type
-     */
-    protected static function _cacheKey($id) {
-        $table = self::mainModel()->getTable();
-        return $table . $id;
     }
 
     //公共的数据过滤条件
@@ -141,7 +144,10 @@ trait MainModelTrait {
         if (session(SESSION_DEPT_ID) && !isset($data['dept_id']) && self::mainModel()->hasField('dept_id')) {
             $data['dept_id'] = session(SESSION_DEPT_ID);
         }
-        $data['create_time'] = date('Y-m-d H:i:s');
+        // 20221026：create_time????
+        if(!isset($data['create_time']) || !$data['create_time']){
+            $data['create_time'] = date('Y-m-d H:i:s');
+        }
         $data['update_time'] = date('Y-m-d H:i:s');
         return $data;
     }
@@ -171,6 +177,9 @@ trait MainModelTrait {
         if (method_exists(__CLASS__, 'extraPreSave')) {
             self::extraPreSave($data, $data['id']);      //注：id在preSaveData方法中生成
         }
+        
+        // $realFieldArr = DbOperate::realFieldsArr(self::mainModel()->getTable());
+        // $dataSave = Arrays::getByKeys($data, $realFieldArr);
         //保存
         $res = self::mainModel()->create($data);
         $resp = $res ? $res->toArray() : [];
@@ -191,6 +200,13 @@ trait MainModelTrait {
                 Debug::debug('extraAfterSave', $addTask);
             }
         }
+        /**
+         * 2022-12-15:增加静态配置清缓存
+         */
+        if (method_exists(__CLASS__, 'staticCacheClear')) {
+            self::staticCacheClear();
+        }
+        
 //        //20210311记录更新日志        TODO调整为异步
 //        // SystemFieldsLogTableService::tableLog( self::mainModel()->getTable(), [], $data );
 //        //清缓存
@@ -252,6 +268,14 @@ trait MainModelTrait {
                 Debug::debug('extraAfterUpdate', $addTask);
             }
         }
+
+        /**
+         * 2022-12-15:增加静态配置清缓存
+         */
+        if (method_exists(__CLASS__, 'staticCacheClear')) {
+            self::staticCacheClear();
+        }
+
 //        //20210311记录更新日志
 //        SystemFieldsLogTableService::tableLog( self::mainModel()->getTable(), $info, $data );
 //        //清缓存
@@ -282,6 +306,7 @@ trait MainModelTrait {
             throw new Exception('记录已锁定不可删除' . self::mainModel()->getTable() . '表' . $this->uuid);
         }
         //【20210315】判断关联表有记录，则不可删
+        /*
         $relativeDels = SystemFieldsInfoService::relativeDelFields(self::mainModel()->getTable());
         if ($relativeDels) {
             foreach ($relativeDels as $relativeDel) {
@@ -295,11 +320,20 @@ trait MainModelTrait {
                 }
             }
         }
+         */
 
         $res = self::mainModel()->where('id', $this->uuid)->delete();
 //        if($res){
 //            self::_cacheUpdate( $this->uuid );
 //        }        
+        
+        /**
+         * 2022-12-15:增加静态配置清缓存
+         */
+        if (method_exists(__CLASS__, 'staticCacheClear')) {
+            self::staticCacheClear();
+        }
+
         return $res;
     }
 
@@ -336,15 +370,49 @@ trait MainModelTrait {
             $picFields = self::mainModel()::$picFields;
             $data = Arrays2d::picFieldCov($data, $picFields);
         }
+        /**多图**/
+        if (property_exists(self::mainModel(), 'multiPicFields')) {
+            $multiPicFields = self::mainModel()::$multiPicFields;
+            $data = Arrays2d::multiPicFieldCov($data, $multiPicFields);
+        }
+        /* 2022-12-18 混合图片的字段提取，如:配置表 */
+        if (property_exists(self::mainModel(), 'mixPicFields')) {
+            $mixPicFields = self::mainModel()::$mixPicFields;
+            $data = Arrays2d::mixPicFieldCov($data, $mixPicFields);
+        }
+        // 2022-12-18:增加获取器转换（不应有查询数据库逻辑，以确保性能）
+        foreach($data as &$dVal){
+            foreach($dVal as $kk=>&$vv){
+                $attrClass = 'get'.ucfirst(Strings::camelize($kk)).'Attr';
+                if(method_exists(self::mainModel(),$attrClass)){
+                    $vv = self::mainModel()->$attrClass($vv,$dVal);
+                }
+            }
+        }
 
         return $data;
     }
-
+    /**
+     * 20230429：增强的筛选，自动判断是否有静态。
+     */
+    public static function selectXS($con = [], $order = "", $field = "", $hidden = []){
+        if (method_exists(__CLASS__, 'staticConList')) {
+            $lists = self::staticConList($con);
+        } else {
+            $lists = self::selectX($con, $order, $field, $hidden);
+        }
+        return $lists;
+    }
+    
     /*
      * 批量保存
      */
 
     public static function saveAll(array &$data, $preData = []) {
+        // 2023-02-28：用于批量导入过滤数据
+        if (method_exists(__CLASS__, 'saveAllFilter')) {
+            self::saveAllFilter($data);      //注：id在preSaveData方法中生成
+        }
         $tmpArr = [];
         foreach ($data as &$v) {
             $tmpData = array_merge($preData, $v);
@@ -358,7 +426,17 @@ trait MainModelTrait {
         }
         //saveAll方法新增数据默认会自动识别数据是需要新增还是更新操作，当数据中存在主键的时候会认为是更新操作，如果你需要带主键数据批量新增，可以使用下面的方式
         // $res = self::mainModel()->saveAll( $tmpArr ,false );
+        // Debug::dump($tmpArr);
         $res = self::saveAllX($tmpArr);
+        // 2022-12-16
+        if (method_exists(__CLASS__, 'staticCacheClear')) {
+            self::staticCacheClear();
+        }
+        // 20230403:批量保存后处理逻辑
+        if (method_exists(__CLASS__, 'extraAfterSaveAll')) {
+            self::extraAfterSaveAll($tmpArr);      //注：id在preSaveData方法中生成
+        }
+        
 //        // 是否需要处理缓存数据
 //        if($dealCache){
 //            foreach( $tmpArr as $v){
@@ -391,35 +469,7 @@ trait MainModelTrait {
         if (!$dataArr) {
             return false;
         }
-        /*
-        $mainTable = self::getTable();
-        $dataArr = [];
-        foreach ($data as &$v) {
-            //20220618：键序重组
-            ksort($v);
-            //20220217;增加过滤字段
-            $v = DbOperate::dataFilter($mainTable, $v);
-            Debug::debug('过滤后的数据', $v);
-            // 拼接sql
-            foreach ($v as &$v2) {
-                if (is_null($v2)) {
-                    $v2 = 'null';
-                } else {
-                    $v2 = '\'' . $v2 . '\'';
-                }
-            }
-            $dataArr[] = implode(',', $v);
-        }
-        //提取键名（过滤不存在字段后）
-        $keys = array_keys($data[0]);
-        $keysStr = '`' . implode('`,`', $keys) . '`';
-        //拼接数据
-        $dataStr = '(' . implode('),(', $dataArr) . ')';
-        // 拼接执行语句
-        $sql = "INSERT INTO " . $mainTable . " (" . $keysStr . ") VALUES " . $dataStr;
-        Debug::debug('批量保存sql', $sql);
-        return Db::execute($sql);
-        */
+
         //20220621;解决批量字段不同步bug                
         $tableName = self::getTable();
         $saveArr = [];
@@ -608,10 +658,18 @@ trait MainModelTrait {
     }
 
     public function delete() {
+        // 20230516：通用的删除前校验数据
+        if (method_exists(__CLASS__, 'delPreCheck')) {
+            $info = $this->info();
+            self::delPreCheck($info);
+        }
         //删除前
         if (method_exists(__CLASS__, 'extraPreDelete')) {
             $this->extraPreDelete();      //注：id在preSaveData方法中生成
         }
+        // 20230601:最后一道防线
+        $tableName = self::getTable();
+        DbOperate::checkCanDelete($tableName, $this->uuid);
         //20220515;优化跳转
         $rawData = $this->get();
         //删除
@@ -663,6 +721,18 @@ trait MainModelTrait {
                     }
                 });
     }
+    /**
+     * 20221104：查询结果即数组
+     * @param type $con
+     * @param type $order
+     * @param type $field
+     * @param type $cache
+     * @return type
+     */
+    public static function listsArr($con = [], $order = '', $field = "*", $cache = -1) {
+        $lists = self::lists($con, $order, $field, $cache);
+        return $lists ? $lists->toArray() : [];
+    }
 
     /**
      * 查询列表，并写入get
@@ -672,7 +742,9 @@ trait MainModelTrait {
         if ($master) {
             $lists = self::mainModel()->master()->where($con)->select();
         } else {
-            $lists = self::mainModel()->where($con)->select();
+            // $lists = self::mainModel()->where($con)->select();
+            // 20230501：优化性能
+            $lists = self::selectXS($con);
         }
         //写入内存
         foreach ($lists as $v) {
@@ -682,100 +754,19 @@ trait MainModelTrait {
     }
 
     /**
-     * 分页的查询
-     * @param type $con
-     * @param type $order
-     * @param type $perPage
-     * @return type
+     * 20220919动态数组列表
      */
-    protected static function commPaginate($con = [], $order = '', $perPage = 10, $having = '', $field = "") {
-        $hasExtraDetails = method_exists(__CLASS__, 'extraDetails');
-        //默认带数据权限
-        $conAll = array_merge($con, self::commCondition());
-        //如果数据权限没记录，尝试去除数据权限进行搜索
-        $count = self::mainModel()->where($conAll)->count();
-        //有条件才进行搜索：20210326
-        if (!$count && $con) {
-            $conAll = array_merge($con, self::commCondition(false));
-        }
-
-        //字段加索引
-        self::condAddColumnIndex($conAll);
-        //如果cache小于-1，表示外部没有传cache,取配置的cache值
-        $cache = self::defaultCacheTime();
-        $inst = self::mainModel()->where($conAll)->order($order);
-        if ($hasExtraDetails) {
-            $inst->field('id');
-        } else if ($field) {
-            $inst->field($field);
-        }
-        $res = $inst->having($having)
-                ->cache($cache)
-                ->paginate(intval($perPage))
-                ->each(function($item, $key) {
-            //额外添加详情信息：固定为extraDetail方法
-            if (method_exists(__CLASS__, 'extraDetail')) {
-                self::extraDetail($item, $item['id']);
-            }
-        });
-        $result = $res->toArray();
-        //20210912,逐步替代 extraDetail方法；额外添加详情信息：固定为extraDetail方法
-        if (method_exists(__CLASS__, 'extraDetails')) {
-            $extraDetails = self::extraDetails(array_column($result['data'], 'id'));
-            //id 设为键
-            $extraDetailsObj = Arrays2d::fieldSetKey($extraDetails, 'id');
-            foreach ($result['data'] as &$v) {
-                $v = $extraDetailsObj[$v['id']];
-            }
-        }
-        // 关联字段的键值对封装（）
-        /*         * *********** 动态枚举 ************ */
-        $columnId = SystemColumnService::tableNameGetId(self::getTable());
-        $dynFields = SystemColumnListService::columnTypeFields($columnId, 'dynenum');
-        $dynDatas = [];
+    public static function dynDataList($dataArr) {
+        $columnId   = SystemColumnService::tableNameGetId(self::getTable());
+        $dynFields  = SystemColumnListService::columnTypeFields($columnId, 'dynenum');
+        $dynDatas   = [];
         foreach ($dynFields as $key) {
-            $dynDatas[$key] = array_unique(array_column($result['data'], $key));
+            $dynDatas[$key] = array_unique(array_column($dataArr, $key));
         }
         Debug::debug('commPaginate 的 dynDataList 的 $columnId', $columnId);
         Debug::debug('commPaginate 的 dynDataList 的 $dynDatas', $dynDatas);
-        $result['dynDataList'] = SystemColumnListService::dynDataList($columnId, $dynDatas);
-        /*         * *********** 动态枚举 ************ */
-//        $res['con'] = $conAll;
-        return $res ? array_merge($result, ['con' => $conAll]) : [];
-    }
-
-    /**
-     * 分页的统计
-     * @param type $con
-     * @param type $order
-     * @param type $perPage
-     * @return type
-     */
-    protected static function commPaginateStatics($con = [], $order = '', $perPage = 10, $having = '') {
-        $conAll = array_merge($con, self::commCondition());
-        $table = self::mainModel()::getTable();
-        $fields = self::mainModel()::getConnection()->getFields($table);
-        //计数
-        $distinctArr = [];
-        foreach ($fields as $key => $value) {
-            $distinctArr[] = 'count(distinct `' . $key . "`) as `SD" . $key . '`';
-        }
-        $count = self::mainModel()->where($conAll)->field(implode(',', $distinctArr))->select();
-        //求和
-        $sumArr = [];
-        foreach ($fields as $key => $value) {
-            $sumArr[] = 'sum(`' . $key . "`) as `SS" . $key . '`';
-        }
-        $sum = self::mainModel()->where($conAll)->field(implode(',', $sumArr))->select();
-
-        return ['count' => $count, 'sum' => $sum];
-    }
-
-    /**
-     * 分页的统计
-     */
-    public static function paginateStatics($con = []) {
-        return self::commPaginateStatics($con);
+        $dynDataList = SystemColumnListService::sDynDataList($columnId, $dynDatas);
+        return $dynDataList;
     }
 
     /**
@@ -800,17 +791,31 @@ trait MainModelTrait {
      * @return type
      */
     public static function paginateX($con = [], $order = '', $perPage = 10, $having = '', $field = "*", $withSum = false) {
-        if (method_exists(__CLASS__, 'extraDetails')) {
-            $field = 'id';
-        }
-        // 一定要放在setCustTable前面
-        $columnId = SystemColumnService::tableNameGetId(self::getTable());
         //默认带数据权限
         $conAll = array_merge($con, self::commCondition());
         //如果有额外的数据过滤条件限定方法
         if (method_exists(__CLASS__, 'extraDataAuthCond')) {
             $conAll = array_merge($conAll, self::extraDataAuthCond());
         }
+        // 查询条件单拎；适用于后台管理（客户权限，业务员权限）
+        return self::paginateRaw($conAll, $order, $perPage, $having, $field, $withSum);
+    }
+    /**
+     * 20230323：raw方法，解决有些不需要数据权限的场景：比如web端
+     * @param type $conAll
+     * @param type $order
+     * @param type $perPage
+     * @param type $having
+     * @param string $field
+     * @param type $withSum
+     * @return type
+     */
+    public static function paginateRaw($conAll = [], $order = '', $perPage = 10, $having = '', $field = "*", $withSum = false) {
+        if (method_exists(__CLASS__, 'extraDetails')) {
+            $field = 'id';
+        }
+        // 一定要放在setCustTable前面
+        $columnId = SystemColumnService::tableNameGetId(self::getTable());
         $page = Request::param('page', 1);
         $start = ($page - 1) * intval($perPage);
         // 定制数据表查询视图的方法
@@ -831,7 +836,9 @@ trait MainModelTrait {
         } else {
             $res = self::mainModel()->where($conAll)->order($order)->field($field)->limit($start, intval($perPage))->select();
             //20220619：如果查询结果数小于分页条数，则结果数即总数
-            $total = $page == 1 && count($res) < $perPage ? count($res) : self::mainModel()->where($conAll)->count(1);
+            $total = $page == 1 && count($res) < $perPage 
+                    ? count($res) 
+                    : self::mainModel()->where($conAll)->count(1);
         }
         // 采用跟TP框架一样的数据格式
         $resp['data'] = $res ? $res->toArray() : [];
@@ -844,6 +851,9 @@ trait MainModelTrait {
             foreach ($resp['data'] as &$v) {
                 $v = $extraDetailsObj[$v['id']];
             }
+        } else {
+            // 2022-12-15:无额外逻辑，也需要查一下配置的统计数据
+            $resp['data'] = SystemColumnListForeignService::listAddStatics(self::getTable(), $resp['data']);
         }
         // 关联字段的键值对封装（）
         /*         * *********** 动态枚举 ************ */
@@ -867,7 +877,7 @@ trait MainModelTrait {
             if ($sumFields) {
                 $fieldStr = DbOperate::sumFieldStr($sumFields);
                 $data = self::mainModel()->where($conAll)->field($fieldStr)->find();
-                $resp['sumData'] = $data;
+                $resp['sumData'] = $data ? $data->toArray() : [];
             } else {
                 // 20220610:增加空数据时输出，避免前端报错
                 $resp['sumData'] = [];
@@ -924,12 +934,26 @@ trait MainModelTrait {
      * @param type $con
      * @return type
      */
-    public static function ids($con = []) {
+    public static function ids($con = [], $order = '') {
         $conAll = array_merge($con, self::commCondition());
         //字段加索引
         self::condAddColumnIndex($con);
-
-        return self::mainModel()->where($conAll)->cache(2)->column('id');
+        
+        $inst = self::mainModel()->where($conAll);
+        if ($order) {
+            $inst->order($order);
+        }
+        return $inst->cache(1)->column('id');
+    }
+    /**
+     * 根据字段的值，提取id；
+     * 如单号，提取明细号
+     * @param type $fieldName
+     * @param type $value
+     */
+    public static function fieldGetIds($fieldName,$value){
+        $con[] = [$fieldName, '=', $value];
+        return self::where($con)->cache(1)->column('id');
     }
 
     /**
@@ -996,6 +1020,9 @@ trait MainModelTrait {
      * @return type
      */
     public function commGet($master = false) {
+        if(!$this->uuid){
+            return [];
+        }
         $con[] = ['id', '=', $this->uuid];
         if (self::mainModel()->hasField('is_delete')) {
             $con[] = ['is_delete', '=', 0];
@@ -1012,18 +1039,31 @@ trait MainModelTrait {
             return self::mainModel()->where($con)->find();
         }
     }
-
+    /**
+     * 缓存get数据的key值
+     */
+    protected function cacheGetKey(){
+        $tableName = self::mainModel()->getTable();
+        return 'mainModelGet_' . $tableName . '-' . $this->uuid;
+    }
+    
     /**
      * 
      * @param type $master   $master  是否从主库获取
      * @return type
      */
     public function get($master = false) {
+        // 2022-11-20:增加静态数据提取方法
+        if (!$this->uuData && method_exists(__CLASS__, 'staticGet')) {
+            $this->uuData = $this->staticGet();
+        }
+
         if (!$this->uuData && !$this->hasUuDataQuery) {
             if (property_exists(__CLASS__, 'getCache') && self::$getCache) {
                 // 有缓存的
-                $tableName = self::mainModel()->getTable();
-                $cacheKey = 'mainModelGet_' . $tableName . '-' . $this->uuid;
+                // $tableName = self::mainModel()->getTable();
+                // $cacheKey = 'mainModelGet_' . $tableName . '-' . $this->uuid;
+                $cacheKey = $this->cacheGetKey();
                 $this->uuData = Cachex::funcGet($cacheKey, function() use ($master) {
                             return $this->commGet($master);
                         });
@@ -1035,6 +1075,13 @@ trait MainModelTrait {
             $this->hasUuDataQuery = true;
         }
         return $this->uuData;
+    }
+    /**
+     * 20230516:仅从缓存中提取get
+     */
+    protected function getFromCache(){
+        $cacheKey = $this->cacheGetKey();
+        return Cachex::get($cacheKey);
     }
 
     /**
@@ -1065,14 +1112,35 @@ trait MainModelTrait {
     /**
      * 分组批量筛选
      */
-    public static function groupBatchSelect($key, $keyIds, $field = "*") {
+    public static function groupBatchSelect($key, $keyIds, $field = "*", $con = []) {
         $con[] = [$key, 'in', $keyIds];
+//        $listsRaw = self::mainModel()->where($con)->field($field)->select();
+//        $lists = $listsRaw ? $listsRaw->toArray() : [];
+        $lists = self::selectXS($con,'',$field);
+
+        //拼接
+        $data = [];
+        foreach ($lists as &$v) {
+            $data[$v[$key]][] = $v;
+        }
+        return $data;
+    }
+    /**
+     * 批量find,适用于key为id的情况
+     * @param type $key
+     * @param type $keyIds
+     * @param type $field
+     * @return type
+     */
+    public static function groupBatchFind($ids, $field = "*") {
+        $con[] = ['id', 'in', $ids];
         $listsRaw = self::mainModel()->where($con)->field($field)->select();
         $lists = $listsRaw ? $listsRaw->toArray() : [];
         //拼接
         $data = [];
         foreach ($lists as &$v) {
-            $data[$v[$key]][] = $v;
+            // $data[$v[$key]][] = $v;
+            $data[$v['id']] = $v;
         }
         return $data;
     }
@@ -1084,12 +1152,32 @@ trait MainModelTrait {
      * @param type $con
      */
     public static function groupBatchCount($key, $keyIds, $con = []) {
+        if (method_exists(__CLASS__, 'staticGroupBatchCount')) {
+            $arr = self::staticGroupBatchCount($key, $keyIds, $con);
+        } else {
+            $arr = self::dbGroupBatchCount($key, $keyIds, $con);
+        }
+        return $arr;
+    }
+    /**
+     * 20230429：数据库中做分组统计
+     * @param type $key
+     * @param type $keyIds
+     * @param type $con
+     * @return type
+     */
+    public static function dbGroupBatchCount($key, $keyIds, $con = []) {
         $con[] = [$key, 'in', $keyIds];
         if (self::mainModel()->hasField('is_delete')) {
             $con[] = ['is_delete', '=', 0];
         }
+        //20221005:增加公司端口过滤
+        if (self::mainModel()->hasField('company_id')) {
+            $con[] = ['company_id', '=', session(SESSION_COMPANY_ID)];
+        }
         return self::mainModel()->where($con)->group($key)->column('count(1)', $key);
     }
+
 
     /**
      * 分组批量求和
@@ -1107,7 +1195,24 @@ trait MainModelTrait {
 
         return self::mainModel()->where($con)->group($key)->column('sum(' . $sumField . ')', $key);
     }
+    /**
+     * 20230403 分组取最新的记录
+     */
+    public static function groupLastRecord($timeField,$groupField ,$dataField='*', $conLast = []){
+        $times          = self::where($conLast)->group($groupField)->column('max('.$timeField.')');
+        if(!$times){
+            return [];
+        }
+        //根据id，提取数据
+        $conL[]         = [$timeField,'in',$times];
+        $listArr        = self::where($conL)->order($timeField)->select();
+        $dataArr        = [];
+        foreach($listArr as $v){
+            $dataArr[$v[$groupField]] = $v;
+        }
 
+        return $dataArr;
+    }
     /**
      * 修改数据时，同步调整实例内的数据
      * @param type $newData
@@ -1137,39 +1242,74 @@ trait MainModelTrait {
         if (!$item) {
             return false;
         }
-        //获取关联字段名：形如：array(2) {
-        //      ["rec_user_id"] => string(9) "ydzb_user"
-        //      ["busier_id"] => string(9) "ydzb_user"
-        //  }
-        $tableName = self::mainModel()->getTable();
-        $infoFields = SystemFieldsInfoService::getInfoFields($tableName);
-        //【1】将关联id转换为信息
-        foreach ($infoFields as $key => $table) {
-            $service = DbOperate::getService($table);
-            $infoKey = preg_replace('/_id$/', '_info', $key);  //将_id结尾的键，替换为Info结尾的键盘：注意标准化
-            //转驼峰，驼峰表示附加字段(冗余,虚拟)
-            $item[camelize($infoKey)] = isset($item[$key]) && $item[$key] ? $service::getInstance($item[$key])->get() : [];
+        return $item;
+    }
+    /**
+     * 2023-01-08：删除公共详情的缓存
+     * @param type $ids
+     */
+    public static function clearCommExtraDetailsCache($ids){
+        if (!is_array($ids)) {
+            $ids = [$ids];
         }
-        //【2】一对多中间表信息，如角色等
-        $manyFields = SystemFieldsManyService::getManyFields($tableName);
-        foreach ($manyFields as $key => $fieldInfo) {
-            $service = DbOperate::getService($fieldInfo['relative_table']);
-            $tmpCon = [];
-            $tmpCon[] = [$fieldInfo['main_field'], '=', $item[$fieldInfo['field_name']]];
-            //拼接字段
-            $item[$fieldInfo['to_field']] = $service::mainModel()->where($tmpCon)->cache(500)->column($fieldInfo['to_field']);
+        foreach($ids as $id){
+            $cacheKey = self::commExtraDetailsCacheKey($id);
+            Cache::rm($cacheKey);
+        }
+    }
+    
+    /**
+     * 2023-01-08：获取数据缓存key
+     */
+    protected static function commExtraDetailsCacheKey($id){
+        $tableName      = self::mainModel()->getTable();
+        $baseCacheKey   = $tableName.'commExtraDetails';
+        return $baseCacheKey.$id;
+    }
+
+    /**
+     * 2023-01-08:带缓存查询详情数据
+     */
+    protected static function commExtraDetailsWithCache($ids, $func = null, $expire = 0){
+        //数组返回多个，非数组返回一个
+        $isMulti = is_array($ids);
+        if (!is_array($ids)) {
+            $ids = [$ids];
+        }
+        // ====
+        $needDbQuery    = false;
+        $cacheRes       = [];
+        // 先从缓存数据中提取；
+        foreach($ids as $id){
+            $cacheKey   = self::commExtraDetailsCacheKey($id);
+            $cacheInfo  = Cache::get($cacheKey);
+            if(!$cacheInfo){
+                $needDbQuery = true;
+            }
+            $cacheRes[] = $cacheInfo;
+        }
+        // 进行数据库查询
+        if($needDbQuery){
+            $lists      = self::commExtraDetails($ids, $func);
+            foreach($lists as $v){
+                $cacheKey   = self::commExtraDetailsCacheKey($v['id']);
+                Cache::set($cacheKey, $v, $expire);
+            }
+
+            $cacheRes   = $lists;
         }
 
-        return $item;
+        return $isMulti ? $cacheRes : $cacheRes[0];
     }
 
     /**
      * 20220606，闭包公共
-     * @param type $ids 
-     * @param type $func    闭包方法
+     * @param type $ids
+     * @param type $func            闭包方法
+     * @param type $withUniStatics  是否带关联统计？过渡
      * @return type
      */
-    protected static function commExtraDetails($ids, $func) {
+    protected static function commExtraDetails($ids, $func = null, $withUniStatics = false) {
         //数组返回多个，非数组返回一个
         $isMulti = is_array($ids);
         if (!is_array($ids)) {
@@ -1184,12 +1324,68 @@ trait MainModelTrait {
         if(self::mainModel()->hasField('company_id')){
             $con[] = ['company_id', 'in', session(SESSION_COMPANY_ID)];
         }        
-        // $listRaw = self::mainModel()->where($con)->select();
-        $lists = self::selectX($con);
+        // $listsRaw = self::selectX($con);      
+        if(method_exists(__CLASS__, 'staticConList')){
+            $listsRaw = self::staticConList($con);
+        } else {
+            $listsRaw = self::selectX($con);      
+        }
+        // 20221104:增？？写入内存
+        foreach($listsRaw as &$dataItem){
+            self::getInstance($dataItem['id'])->setUuData($dataItem,true);  //强制写入
+            // 20230516：增加写入缓存
+            if (property_exists(__CLASS__, 'getCache') && self::$getCache) {
+                // 有缓存的
+                // $tableName = self::mainModel()->getTable();
+                // $cacheKey = 'mainModelGet_' . $tableName . '-' . $this->uuid;
+                $cacheKey = self::getInstance($dataItem['id'])->cacheGetKey();
+                self::getInstance($dataItem['id'])->hasUuDataQuery = true;
+                Cachex::setVal($cacheKey, $dataItem);
+            }
+        }
+        // 20220919:返回结果按原顺序输出
+        $listsObj = Arrays2d::fieldSetKey($listsRaw, 'id');
+        $listsA = [];
+        foreach ($ids as &$id) {
+            // 20230516：增加isset判断
+            if(isset($listsObj[$id])){
+                $listsA[] = $listsObj[$id];
+            }
+        }
+        // 20230528：添加框架的关联统计
+        if($withUniStatics){
+            $listsA = self::listAddUniStatics($listsA);
+        }
+        // 2022-12-14:【公共的配置式拼接统计数据】
+        $lists = SystemColumnListForeignService::listAddStatics(self::getTable(), $listsA);
         //自定义方法：
-        $listsNew = $lists ? $func($lists) : [];
+        $listsNew = $lists 
+                ? ($func ? $func($lists) : $lists)
+                : [];
 
         return $isMulti ? $listsNew : $listsNew[0];
+    }
+    /**
+     * 20230528：列表添加框架的关联统计
+     */
+    protected static function listAddUniStatics($lists){
+        if(!$lists){
+            return [];
+        }
+        $res = self::objAttrConfList();
+        $ids = $lists ? array_column($lists, 'id') : [];
+        //【1】批量查询属性列表
+        foreach($res as $key=>$val){
+            self::objAttrsListBatch($key, $ids); 
+        }
+        //【2】拼接属性列表
+        foreach($lists as &$v){
+            // $key即objAttrs的key
+            foreach($res as $key=>$val){
+                $v['uni'.ucfirst($key).'Count'] = self::getInstance($v['id'])->objAttrsCount($key);
+            }
+        }
+        return $lists;
     }
 
     /**
@@ -1213,7 +1409,12 @@ trait MainModelTrait {
             $info = self::extraDetails($this->uuid);
         } else {
             $infoRaw = $this->get();
-            $info = $infoRaw ? $infoRaw->toArray() : [];
+            // 2022-11-20???
+            if(is_object($infoRaw)){
+                $info = $infoRaw ? $infoRaw->toArray() : [];
+            } else {
+                $info = $infoRaw ? : [];
+            }
         }
         /** 20220514；增加动态枚举数据返回 ************ */
         $columnId = SystemColumnService::tableNameGetId(self::getTable());
@@ -1224,7 +1425,7 @@ trait MainModelTrait {
         }
         // 固定dynDataList
         if($info){
-            $info['dynDataList'] = SystemColumnListService::dynDataList($columnId, $dynDatas);
+            $info['dynDataList'] = SystemColumnListService::sDynDataList($columnId, $dynDatas);
         }
 
         return $info;
@@ -1248,11 +1449,11 @@ trait MainModelTrait {
      * @return type
      */
     public static function find($con = [], $cache = 5) {
-        $con = array_merge($con, self::commCondition());
+        $conN = array_merge($con, self::commCondition());
         //字段加索引
-        self::condAddColumnIndex($con);
+        self::condAddColumnIndex($conN);
 
-        $inst = self::mainModel()->where($con);
+        $inst = self::mainModel()->where($conN);
         $item = $cache ? $inst->cache($cache)->find() : $inst->find();
         //写入内存
         if ($item) {
@@ -1260,18 +1461,27 @@ trait MainModelTrait {
         }
 
         //额外添加详情信息：固定为extraDetail方法
+        /* 2022-12-14精简剔除
         if (method_exists(__CLASS__, 'extraDetail')) {
             self::extraDetail($item, $item['id']);
         }
+         */
         return $item;
     }
-
+    
     /**
      * 末条记录id
      * @return type
      */
     public static function lastId() {
         return self::mainModel()->order('id desc')->value('id');
+    }
+    
+    /*
+     * 上一次的值
+     */
+    public static function lastVal($field, $con = []){
+        return self::mainModel()->where($con)->order('id desc')->value($field);
     }
 
     /*     * ************************校验方法******************************* */
@@ -1337,7 +1547,7 @@ trait MainModelTrait {
      * 20220619 只保存到内存中
      */
     public static function saveRam($data) {
-        self::queryCountCheck(__METHOD__);           
+        self::queryCountCheck(__METHOD__);
         global $glSaveData;
         self::preSaveData($data);
         if (method_exists(__CLASS__, 'ramPreSave')) {
@@ -1360,11 +1570,26 @@ trait MainModelTrait {
         }
 
         $glSaveData[$tableName][$data['id']] = $data;
+        // 20230519
+        self::pushObjAttrs($data);
         //更新完后执行：类似触发器
         if (method_exists(__CLASS__, 'ramAfterSave')) {
             self::ramAfterSave($data, $data['id']);
         }
+        // 20230519静态的，清一下缓存
+        if (method_exists(__CLASS__, 'staticCacheClear')) {
+            self::staticCacheClear();
+        }
         return $data;
+    }
+    /**
+     * 20230519:写入关联类库内存
+     * @param type $data
+     */
+    protected static function pushObjAttrs($data){
+        self::dealObjAttrsFunc($data, function($baseClass, $keyId, $property) use ($data){
+            $baseClass::getInstance($keyId)->objAttrsPush($property,$data);            
+        });
     }
     /**
      * 20220619
@@ -1400,11 +1625,52 @@ trait MainModelTrait {
         }
         //20220620:封装
         $dataSave = $this->doUpdateRam($data);
+        // 20230519:更新
+        self::updateObjAttrs($this->get(), $this->uuid);
+
         //更新完后执行：类似触发器
         if (method_exists(__CLASS__, 'ramAfterUpdate')) {
             self::ramAfterUpdate($data, $this->uuid);
         }
+        // 20230519静态的，清一下缓存
+        if (method_exists(__CLASS__, 'staticCacheClear')) {
+            self::staticCacheClear();
+        }
         return $dataSave;
+    }
+    /**
+     * 20230519:更新关联
+     * @param type $data    更新数组内容
+     * @param type $uuid    id单传
+     */
+    protected static function updateObjAttrs($data, $uuid){
+        self::dealObjAttrsFunc($data, function($baseClass, $keyId, $property) use ($data,$uuid){
+            $baseClass::getInstance($keyId)->objAttrsUpdate($property,$uuid,$data);            
+        });
+    }
+    /**
+     * 处理关联属性的闭包函数
+     * @param type $data
+     * @param type $func
+     */
+    private static function dealObjAttrsFunc($data,$func){
+        $class = '\\'.__CLASS__;
+        $con[] = ['class', '=', $class];
+        $lists = DbOperate::objAttrConfArr($con);
+        foreach($lists as $v){
+            // project_id
+            $keyField   = Arrays::value($v,'keyField');
+            // DevProjectService
+            $baseClass  = Arrays::value($v,'baseClass');
+            // devProjectExt
+            $property   = Arrays::value($v,'property');
+            $keyId      = $keyField ? Arrays::value($data,$keyField) : '';
+            if($keyId && $baseClass && $property){
+                // 20230519:调用闭包函数
+                $func($baseClass, $keyId, $property);
+//                $baseClass::getInstance($keyId)->objAttrsUpdate($property,$uuid,$data);            
+            }
+        }
     }
     /**
      * 不关联执行前后触发的更新
@@ -1449,17 +1715,33 @@ trait MainModelTrait {
      */
     public function deleteRam() {
         self::queryCountCheck(__METHOD__);           
+        $rawData = $this->get();
         //删除前
         if (method_exists(__CLASS__, 'ramPreDelete')) {
             $this->ramPreDelete();      //注：id在preSaveData方法中生成
         }
         $this->doDeleteRam();
+        // 20230519:更新
+        self::delObjAttrs($rawData, $this->uuid);
         //删除后
         if (method_exists(__CLASS__, 'ramAfterDelete')) {
-            $rawData = $this->get();
             $this->ramAfterDelete($rawData);
         }
+        // 20230519静态的，清一下缓存
+        if (method_exists(__CLASS__, 'staticCacheClear')) {
+            self::staticCacheClear();
+        }
         return $this->uuid;
+    }
+    /**
+     * 
+     * @param type $data    原始数据，get 提取
+     * @param type $uuid
+     */
+    protected static function delObjAttrs($data, $uuid){
+        self::dealObjAttrsFunc($data, function($baseClass, $keyId, $property) use ($uuid){
+            $baseClass::getInstance($keyId)->objAttrsUnSet($property,$uuid);            
+        });
     }
     /**
      * 20220703;?仅执行删除动作
@@ -1482,11 +1764,11 @@ trait MainModelTrait {
      * 20220620：死循环调试专用
      * @throws Exception
      */
-    protected static function queryCountCheck($method){
-        self::$queryCount = self::$queryCount +1;
+    protected static function queryCountCheck($method, $limitTimes = 2000){
+        // self::$queryCount               = self::$queryCount + 1;
+        self::$queryCountArr[$method]   = Arrays::value(self::$queryCountArr, $method, 0) + 1;
         // 20220312;因为检票，从20调到200；TODO检票的更优方案呢？？
-        $limitTimes = 50;
-        if(self::$queryCount > $limitTimes){
+        if(self::$queryCountArr[$method] > $limitTimes){
             throw new Exception(__CLASS__.'中'.$method.'$queryCount 次数超限'.$limitTimes);
         }
     }
@@ -1520,7 +1802,8 @@ trait MainModelTrait {
         if (self::mainModel()->hasField('is_delete')) {
             $con[]  = ['is_delete','=',0];
         }
-        $idsSaved    = self::mainModel()->where($con)->column('id');
+        // 2022-11-20: 增加cache(1)缓存
+        $idsSaved    = self::mainModel()->where($con)->cache(1)->column('id');
         //合并未入库和已入库数据
         $ids    = array_merge($idsNoSave,$idsSaved);
         $info   = $this->get();
@@ -1563,7 +1846,7 @@ trait MainModelTrait {
      * @return boolean
      */
     public static function sourceIdToId($sourceId){
-        if(!$sourceId){
+        if(!$sourceId && $sourceId !== 0){
             return false;
         }
         $con[] = ['source_id','=',$sourceId];
@@ -1572,4 +1855,129 @@ trait MainModelTrait {
         }
         return self::mainModel()->where($con)->value('id');
     }
+    /**
+     * 20221116,从逗号分隔中查询数据
+     */
+    public static function sourceIdToIdSet($sourceId){
+        if(!$sourceId && $sourceId !== 0){
+            return false;
+        }
+        if (self::mainModel()->hasField('company_id')) {
+            $con[] = ['company_id','=',session(SESSION_COMPANY_ID)];
+        }
+        return self::mainModel()->where($con)->whereRaw("FIND_IN_SET('".$sourceId."', source_id)")->value('id');
+    }
+    /**
+     * 2023-02-25:复制数据
+     */
+    public function copy(){
+        self::checkTransaction();
+        $realFieldsArr = DbOperate::realFieldsArr( self::getTable() );
+        Debug::debug('$realFieldsArr',$realFieldsArr);
+        
+        $con[] = ['id','=',$this->uuid];
+        $dataInfo   = self::where( $con ) ->field(implode(',',$realFieldsArr))->find( );
+        if(!$dataInfo){
+            throw new Exception('数据不存在'.$this->uuid);
+        }
+        $res        = $dataInfo->toArray();
+        //20230225:唯一字段复制加copy
+        $columnId       = SystemColumnService::tableNameGetId(self::getTable());
+        $uniqueFields   = SystemColumnListService::uniqueFields($columnId);
+        foreach($uniqueFields as $v){
+            if( isset($res[$v])){ 
+                $res[$v] = $res[$v] . 'Copy';
+            }
+        }
+
+        if( isset($res['id'])){ unset($res['id']);}
+        if( isset($res['create_time'])){ unset($res['create_time']);}
+        if( isset($res['update_time'])){ unset($res['update_time']);}
+
+        Debug::debug('$res',$res);
+        //保存
+        $resp   = self::save( $res );
+        return $resp;
+    }
+    
+    /**
+     * 20230416：关联数据
+     * @param type $thingId
+     */
+    public static function uniDel($key,$keyIds){
+        self::checkTransaction();
+        $con[] = [$key,'in', $keyIds];
+        return self::where($con)->delete();
+    }
+    /**
+     * 20230425：清除字段
+     * 应用场景：
+     * 1、删除包车订单后，清关联表的订单编号字段
+     * 2、删审批单后，清原始表审批单号字段
+     * @param type $fieldName
+     * @param type $fieldValue
+     */
+    public static function clearField($fieldName,$fieldValue){
+        $con[] = [$fieldName,'=',$fieldValue];
+        return self::where($con)->update([$fieldName=>'']);
+    }
+    /**
+     * 20230519:模板消息发送
+     * @param type $id          id
+     * @param type $methodName  方法名
+     * @return type
+     */
+    public static function doTemplateMsgSend($id, $methodName){
+        $tableName = self::getTable();
+        $res = SendTemplateMsg::doMethodSend($tableName, $methodName, $id);
+        return $res;
+    }
+    
+    
+    
+    
+    /**********【20230531】注入触发器 ***********************************/
+    /**
+     * 20230518：提取配置数组
+     * 
+    protected static $trigger = [
+        'afterOrderPay'=>[
+            'dealMethod'    =>'customer_id',
+            'dealClass'     =>'xjryanse\dev\service\DevProjectExtService'
+        ]
+    ];
+     * 
+     */
+    public static function confArrTrigger(){
+        $lists  = property_exists(__CLASS__, 'trigger') ? self::$trigger : [];
+        $resArr = [];
+        foreach($lists as $k=>$v){
+            $tmp                = $v;
+            $tmp['class']       = __CLASS__;
+            $tmp['property']    = $k;
+
+            $resArr[]           = $tmp;
+        }
+        return $resArr;
+    }
+    /**
+     * 20230531:执行触发器
+     * @param type $triggerKey      钩子key
+     * @param type $con             钩子条件
+     * @param type $data            入参数据
+     */
+    public static function doTrigger($triggerKey, $con = [], $data = []){
+        $triggers = DbOperate::triggerArr();
+        $con[] = ['property','=',$triggerKey];
+        $lists = Arrays2d::listFilter($triggers, $con);
+        foreach($lists as $v){
+            $dealClass  = Arrays::value($v, 'dealClass');
+            $dealMethod = Arrays::value($v, 'dealMethod');
+            if(class_exists($dealClass) && method_exists($dealClass, $dealMethod)){
+                call_user_func([ $dealClass , $dealMethod], $data );
+            }
+        }
+    }
+    
+    
 }

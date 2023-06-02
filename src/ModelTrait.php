@@ -7,15 +7,17 @@ use xjryanse\logic\DbOperate;
 use xjryanse\logic\Debug;
 use xjryanse\logic\ModelQueryCon;
 use xjryanse\logic\Cachex;
+use xjryanse\logic\Arrays;
 use think\facade\Request;
 use think\Model;
+use Exception;
 
 /**
  * 模型复用
  */
 trait ModelTrait {
     /**
-     * 不分页的列表
+     * 【弃用】不分页的列表
      *
      * @param array $con
      *
@@ -26,7 +28,7 @@ trait ModelTrait {
     }
 
     /**
-     * 分页查询列表
+     * 【弃用】 分页查询列表
      *
      * @param array $con      查询条件
      * @param int   $per_page 每页记录数
@@ -37,7 +39,7 @@ trait ModelTrait {
     }
 
     /**
-     * 分页查询列表(针对非模型)
+     *  【弃用】分页查询列表(针对非模型)
      *
      * @param array $query
      * @param array $con      查询条件
@@ -60,7 +62,7 @@ trait ModelTrait {
     public static function hasField( $fieldName )
     {
         $tableColumns   = DbOperate::columns(self::getTable());
-        $fields    = array_column( $tableColumns,'Field');
+        $fields    = $tableColumns ? array_column( $tableColumns,'Field') :[];
 //        $fields = self::getConnection()->getFields( self::getTable());
         return in_array($fieldName, $fields);
     }
@@ -184,7 +186,7 @@ trait ModelTrait {
     public static function setTimeVal( $value )
     {
         return $value && strtotime($value) > 0 ? $value : null;
-    }    
+    }  
     /**
      * 图片获取器取值
      * @param type $value   值
@@ -193,23 +195,46 @@ trait ModelTrait {
      */
     public static function getImgVal( $value ,$isMulti = false)
     {
+        // 2022-12-18:增加数组判断
         if(!$value){
             return $value;
         }
-        if($isMulti){
-            $ids    = is_array($value) ? $value : explode( ',', $value );
-            $con[]  = ['id','in', $ids ];
-            $res = SystemFileService::mainModel()->where( $con )->field('id,file_type,file_path,file_path as rawPath')->cache(86400)->select();
-            Debug::debug('获取图片地址Sql',SystemFileService::mainModel()->getLastSql());
-            return $res ? $res->toArray() : $value;
-        } else {
-            Debug::debug('获取图片',$value);
-            return Cachex::funcGet('FileData_'.$value, function() use ($value){
-                $info = SystemFileService::mainModel()->where('id', $value )->field('id,file_type,file_path,file_path as rawPath')->cache(86400)->find();
-                Debug::debug('获取图片地址',$info);
-                return $info ? $info->toArray() : $value;
-            });
+        // 单图，已转
+        if(is_array($value) && isset($value['id'])){
+            return $value;
         }
+        // 多图，已转
+        if($isMulti && is_array($value) && is_array($value[0]) && isset($value[0]['id'])){
+            return $value;
+        }
+        
+        $files = SystemFileService::filesWithSys($value);
+        $res = $isMulti 
+                ? $files 
+                : ( $files ? $files[0] : []);
+        return $res;
+//      20230516优化
+//        if($isMulti){
+//            //2022-12-18:解决多图bug
+//            if(!is_string($value)){
+//                return $value;
+//            }
+//            //20230414:客诉实名制多图有张空白图片
+//            $ids    = is_array($value) ? $value : explode( ',', $value );
+//            $con[]  = ['id','in', $ids ];
+//            $res = SystemFileService::mainModel()->where( $con )->field('id,file_type,file_path,file_path as rawPath')->cache(86400)->select();
+//            Debug::debug('获取图片地址Sql',SystemFileService::mainModel()->getLastSql());
+//            return $res ? $res->toArray() : $value;
+//        } else {
+//            Debug::debug('获取图片',$value);
+//            // 20220923:增加协议；避免http打不开https的情况
+//            $cacheKey = Request::scheme().'FileData_'.$value;
+//            return Cachex::funcGet($cacheKey, function() use ($value){
+//                $info = SystemFileService::mainModel()->where('id', $value )->field('id,file_type,file_path,file_path as rawPath')->cache(86400)->find();
+//                Debug::debug('获取图片地址',$info);
+//                return $info ? $info->toArray() : $value;
+//            });
+//        }
     }
     /**
      * 获取数据表前缀

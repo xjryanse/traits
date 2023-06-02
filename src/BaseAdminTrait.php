@@ -18,6 +18,7 @@ use xjryanse\system\logic\ExportLogic;
 use xjryanse\system\logic\ImportLogic;
 use xjryanse\system\service\SystemColumnListService;
 use xjryanse\system\service\SystemImportAsyncService;
+use xjryanse\system\service\SystemColumnWhereCovService;
 use xjryanse\universal\service\UniversalItemBtnService;
 use xjryanse\universal\service\UniversalItemTableService;
 /**
@@ -33,7 +34,9 @@ trait BaseAdminTrait
     protected $admTableId;
     
     protected $methodKey;
-    
+    // 20230526：表名对应的服务类库
+    protected $service;
+
     /**
      * 【1】初始化参数设定
      */
@@ -45,6 +48,9 @@ trait BaseAdminTrait
         //方法id作数据隔离
         $cateFieldValues        = Request::param();
         $this->columnInfo       = $this->getColumnInfo( $cateFieldValues ,$this->methodKey );
+        // 20230526:表名对应的服务类库
+        $this->service          = $this->columnInfo ? DbOperate::getService( $this->columnInfo['table_name'] ) : null;
+
         self::debug('$this->columnInfo',$this->columnInfo);
         //编辑方法才去取
         if(Request::action() == 'edit'){
@@ -95,27 +101,16 @@ trait BaseAdminTrait
     /**
      * 公共列表页
      */
-    protected function commList( $cond = [])
+    protected function commList( $cond = [], $paginateMethod)
     {
-        $list               = $this->commListData( $cond );
-
+        $list               = $this->commListData( $cond, $paginateMethod );
         return $this->dataReturn('获取数据',$list);
-/*        
-        if(TpRequest::isAjax()){
-            $list               = $this->commListData( $cond );
-            return $this->dataReturn('获取数据',$list);
-        }
-//        $this->assign('columnInfo',$this->columnInfo);
-        return $this->fetch( $this->template ? : 'common/list');
- */
-
     }
-    /*
-     * 【xjl】公共列表数据
+    /**
+     * 获取分页查询条件
      */
-    protected function commListData( $cond = [] )
-    {
-        //20211207;兼容vue前端的写法则
+    protected function getCondition($cond = []){
+                //20211207;兼容vue前端的写法则
         $dataParam         = Request::param('table_data',[] );
         if(is_string($dataParam)){
             $dataParam = json_decode($dataParam,JSON_UNESCAPED_UNICODE);
@@ -140,7 +135,11 @@ trait BaseAdminTrait
                 $con = array_merge($con,$specialSearchCon);
             }
         }
-        
+        // 20221030：增加特殊转换条件
+        $whereCon = SystemColumnWhereCovService::getWhere($info['id'],$uparam);
+        if($whereCon){
+            $con = array_merge($con,$whereCon);
+        }
         //年月渲染，根据是否设置了字段来判断显示
         //20220407,增加判断yearmonth有值
         if($info['yearmonth_field'] && Arrays::value($this->data, 'yearmonth')){
@@ -153,20 +152,38 @@ trait BaseAdminTrait
         $this->debug( '查询条件con',$con );
         //查询条件缓存（用于导出）
         session($this->conditionCacheKey(),$con);
+        return $con;
+    }
+    
+    /*
+     * 【xjl】公共列表数据
+     */
+    protected function commListData( $cond = [], $method = 'paginate' )
+    {
+        $con = $this->getCondition($cond);
         //运行到此处1.56s
         //获取分页列表
-        $perPage        = Request::param( 'per_page', 20 );
+        // 20220924:限制查询几条？？
+        $info           = $this->columnInfo;
+        $limit          = Request::param( 'limit' );
+        $perPage        = $limit ? : Request::param( 'per_page', 20 );
         $class          = DbOperate::getService( $info['table_name'] );
         $fields         = ColumnLogic::listFields($this->columnInfo['id']);
         //分页数据：排序
         $orderBy = Request::param('orderBy') ? : $info['order_by'];
         $withSum        = Request::param('withSum') ? true :false;
-        $list   = $class::paginate( $con , $orderBy ,$perPage,"", implode(',', $fields), $withSum);
+        $list   = $class::$method( $con , $orderBy ,$perPage,"", implode(',', $fields), $withSum);
         //运行到此处 3.55s
         //添加额外的数据
-        foreach($list['data'] as &$vv){
-            //根据不同字段类型，映射不同类库进行数据转换
-            $vv = $this->commDataInfo( $vv , $this->columnInfo['listInfo'] );
+        if($list['data']){
+            foreach($list['data'] as &$vv){
+                //根据不同字段类型，映射不同类库进行数据转换
+                $vv = $this->commDataInfo( $vv , $this->columnInfo['listInfo'] );
+            }
+        }
+        // 20220924控制分页不向下查询更多
+        if($limit){
+            $list['last_page'] = 1;
         }
         //数据统计
 //        $list['statics']    = $class::paginateStatics( $con );
@@ -174,40 +191,40 @@ trait BaseAdminTrait
         return $list;
     }
     
-    /**
-     * 公共新增页
-     */
-    protected function commAdd()
-    {
-        $header = $this->commHeader();
-        //请求的参数，带入表单
-        $data   = Request::param();
-        //默认填写当前用户的字段
-        if(isset( $data['currentUserField'])){
-            $currentUserField = explode(',','currentUserField');
-            foreach( $currentUserField as $currentUserField){
-                $data[ $currentUserField ] = session(SESSION_USER_ID);
-            }
-        }        
-        $row    = $this->commDataInfo( $data , $this->columnInfo['listInfo'] );        
-        $this->assign('row', $row);
-        //表单类型：添加
-        $this->assign('formType', 'add');
-        $this->debug('row', $data );
-        
-        $url = isset($header['add_ajax_url']) && $header['add_ajax_url'] 
-                ? $header['add_ajax_url']
-                :'save';
-        $this->assign('formUrl', url( $url , $this->paramInherit ) );
-        $this->assign('btnName', '新增' );
-        
-        $isLayer = Request::param('isLayer','');                        //弹窗不是新页面
-        if($isLayer){
-            return $this->fetch( $this->template ? : 'common/add2');    //加载静态资源
-        } else {
-            return $this->fetch( $this->template ? : 'common/add');
-        }
-    }
+//    /**
+//     * 公共新增页
+//     */
+//    protected function commAdd()
+//    {
+//        $header = $this->commHeader();
+//        //请求的参数，带入表单
+//        $data   = Request::param();
+//        //默认填写当前用户的字段
+//        if(isset( $data['currentUserField'])){
+//            $currentUserField = explode(',','currentUserField');
+//            foreach( $currentUserField as $currentUserField){
+//                $data[ $currentUserField ] = session(SESSION_USER_ID);
+//            }
+//        }        
+//        $row    = $this->commDataInfo( $data , $this->columnInfo['listInfo'] );        
+//        $this->assign('row', $row);
+//        //表单类型：添加
+//        $this->assign('formType', 'add');
+//        $this->debug('row', $data );
+//        
+//        $url = isset($header['add_ajax_url']) && $header['add_ajax_url'] 
+//                ? $header['add_ajax_url']
+//                :'save';
+//        $this->assign('formUrl', url( $url , $this->paramInherit ) );
+//        $this->assign('btnName', '新增' );
+//        
+//        $isLayer = Request::param('isLayer','');                        //弹窗不是新页面
+//        if($isLayer){
+//            return $this->fetch( $this->template ? : 'common/add2');    //加载静态资源
+//        } else {
+//            return $this->fetch( $this->template ? : 'common/add');
+//        }
+//    }
     /**
      * 取信息
      * @return type
@@ -218,51 +235,86 @@ trait BaseAdminTrait
         Debug::debug('commGet路由参数',Request::route());
         $dataParam         = Request::param('table_data',[] );
         $id = Arrays::value($dataParam, 'id') ? :Request::param('id','');
-
+        // 20230313:前端奇怪的传参
+        if(is_array($id)){
+            return [];
+        }
         Debug::debug('$id',$id);
         if($id){
-            $info = $this->columnInfo;
-            //表名取服务类
-            $class  = DbOperate::getService( $info['table_name'] );
-            $res    = $class::getInstance( $id )->info( );
+            $res    = $this->service::getInstance( $id )->info( );
         }
         return $id && $res 
                 ? (is_array($res) ? $res : $res->toArray() )
                 : [];
     }
     /**
-     * 公共编辑页
+     * 20230222：跳转的导出，准备弃用了，使用download方法替代
+     * @param type $key
      */
-    protected function commEdit()
-    {
-        $header = $this->commHeader();
-        $res = $this->commGet();
-        if( !$res ){
-            return ;
-        }
-        
-        $resp = $this->commDataInfo( $res , $this->columnInfo['listInfo'] );
+    protected function commGetGenerate($key){
+        $dataParam         = Request::param('table_data',[] );
+        $id = Arrays::value($dataParam, 'id') ? :Request::param('id','');
 
-        $this->assign('row', $resp );
-        Debug::debug('commEdit的row', $resp );
-        //表单类型：添加
-        $this->assign('formType', 'edit');
-
-        $ajaxUrl = isset($header['edit_ajax_url']) && $header['edit_ajax_url'] 
-                ? $header['edit_ajax_url']
-                :'update';
-        //覆盖initAdminAssign中的方法，重新渲染字段信息：因有些字段会根据实际数据的类型进行过滤
-        $this->assign('formUrl', url( $ajaxUrl ,$this->paramInherit) );
-        $this->assign('btnName', '编辑' );
-
-        $isLayer = Request::param('isLayer','');                        //弹窗不是新页面
-        Debug::debug('$isLayer', $isLayer );
-        if($isLayer){
-            return $this->fetch( $this->template ? : 'common/add2');    //加载静态资源
-        } else {
-            return $this->fetch( $this->template ? : 'common/add');
-        }
+        Debug::debug('$id',$id);
+        $info = $this->columnInfo;
+        //表名取服务类
+        $class  = DbOperate::getService( $info['table_name'] );
+        $res = $class::getInstance( $id )->infoGenerate( $key );
+        return $res;
     }
+    /**
+     * 20230321：数据导出，带了文件名处理
+     * @param type $key
+     * @return type
+     */
+    protected function commGetGenerateDownload($key){
+        $dataParam         = Request::param('table_data',[] );
+        $id = Arrays::value($dataParam, 'id') ? :Request::param('id','');
+
+        Debug::debug('$id',$id);
+        $info = $this->columnInfo;
+        //表名取服务类
+        $class  = DbOperate::getService( $info['table_name'] );
+        $res = $class::getInstance( $id )->infoGenerateDownload( $key );
+        //格式：
+//        $respData['url']        = 'http://sdsssss.doc';
+//        $respData['fileName']   = '申请表.doc';
+        
+        return $res;
+    }
+//    /**
+//     * 公共编辑页
+//     */
+//    protected function commEdit()
+//    {
+//        $header = $this->commHeader();
+//        $res = $this->commGet();
+//        if( !$res ){
+//            return ;
+//        }
+//        
+//        $resp = $this->commDataInfo( $res , $this->columnInfo['listInfo'] );
+//
+//        $this->assign('row', $resp );
+//        Debug::debug('commEdit的row', $resp );
+//        //表单类型：添加
+//        $this->assign('formType', 'edit');
+//
+//        $ajaxUrl = isset($header['edit_ajax_url']) && $header['edit_ajax_url'] 
+//                ? $header['edit_ajax_url']
+//                :'update';
+//        //覆盖initAdminAssign中的方法，重新渲染字段信息：因有些字段会根据实际数据的类型进行过滤
+//        $this->assign('formUrl', url( $ajaxUrl ,$this->paramInherit) );
+//        $this->assign('btnName', '编辑' );
+//
+//        $isLayer = Request::param('isLayer','');                        //弹窗不是新页面
+//        Debug::debug('$isLayer', $isLayer );
+//        if($isLayer){
+//            return $this->fetch( $this->template ? : 'common/add2');    //加载静态资源
+//        } else {
+//            return $this->fetch( $this->template ? : 'common/add');
+//        }
+//    }
     /**
      * 公共删除接口
      */
@@ -356,7 +408,7 @@ trait BaseAdminTrait
     protected function commUpdateRam()
     {
         //取请求字段内容
-        $postData           = Request::param();
+        $postData           = $this->data ? :Request::param();
         // dump($postData);
         $info               = $this->columnInfo;
         //数据转换
@@ -364,7 +416,7 @@ trait BaseAdminTrait
         //表名取服务类
         $class  = DbOperate::getService( $info['table_name'] );
         //批量
-        $ids = Request::param('id','');
+        $ids                = Arrays::value($postData,'id');        
         if(!is_array($ids)){
             //兼容逗号传值，处理成数组
             $ids = explode(',',$ids);
@@ -389,7 +441,7 @@ trait BaseAdminTrait
     protected function commDelRam()
     {
         //取请求字段内容
-        $data               = Request::param();
+        $data           = $this->data ? :Request::param();        
         if( !isset($data['id']) || ! $data['id'] ) {
             return $this->errReturn( 'id必须' );
         }
@@ -397,7 +449,7 @@ trait BaseAdminTrait
         //表名取服务类
         $class  = DbOperate::getService( $info['table_name'] );
         
-        $ids = Request::param('id','');
+        $ids                = Arrays::value($data,'id');        
         if(!is_array($ids)){
             //兼容逗号传值，处理成数组
             $ids = explode(',',$ids);
@@ -435,7 +487,7 @@ trait BaseAdminTrait
     protected function commUpdate()
     {
         //取请求字段内容
-        $postData           = Request::param();
+        $postData           = $this->data ? :Request::post();
         // dump($postData);
         $info               = $this->columnInfo;
         //数据转换
@@ -443,7 +495,7 @@ trait BaseAdminTrait
         //表名取服务类
         $class  = DbOperate::getService( $info['table_name'] );
         //批量
-        $ids = Request::param('id','');
+        $ids                = Arrays::value($postData,'id');
         if(!is_array($ids)){
             //兼容逗号传值，处理成数组
             $ids = explode(',',$ids);
@@ -475,6 +527,7 @@ trait BaseAdminTrait
         //取请求字段内容
         $postData           = $this->data ? : Request::param();
         $info               = $this->columnInfo;
+        // throw new \Exception('测试中');
         //数据转换
         $data = $this->commDataCov( $postData , $info);
         //表名取服务类
@@ -530,12 +583,14 @@ trait BaseAdminTrait
         }
     }
     /**
-     * 20220316新的导出逻辑（性能不佳）
+     * 20220816，paginate方法处理数据后导出逻辑
+     * （性能不佳）
      * @return type
      */
-    protected function commExportNew(){
+    protected function commExportPaginate(){
         $btnId      = Request::param('uniBtnId','');
         $btnInfo    = UniversalItemBtnService::getInstance($btnId)->get();
+        $uniFieldArr    = UniversalItemBtnService::getInstance($btnId)->getExportFieldArr();
 
         $con            = session( $this->conditionCacheKey() );
         $info           = $this->columnInfo;
@@ -544,18 +599,21 @@ trait BaseAdminTrait
         //分页数据：排序
         $orderBy        = Request::param('orderBy') ? : $info['order_by'];
         $withSum        = Request::param('withSum') ? true :false;
-        $list           = $class::paginate( $con , $orderBy ,1000,"", implode(',', $fields), $withSum);
+        $list           = $class::paginate( $con , $orderBy ,9999,"", implode(',', $fields), $withSum);
+        //20220927
+        $sumDataArr     = Arrays::value($list, 'sumData',[]);
         //导出数据转换：拼上动态枚举的值
-        $exportData     = UniversalItemTableService::exportDataDeal($v['optionArr'], $list['data'], $list['dynDataList']);
+        $exportData     = UniversalItemTableService::exportDataDeal($uniFieldArr, $list['data'], $list['dynDataList'], $sumDataArr);
         if($btnInfo['tpl_id']){
             //有模板，使用模板导出
             $replace                = [];
-            $res                    = GenerateTemplateLogService::export($btnInfo['tpl_id'], $exportData,$replace);
+            $resp                   = GenerateTemplateLogService::export($btnInfo['tpl_id'], $exportData,$replace);
+            $res                    = $resp['file_path'];
         } else {
-            $dataTitle  = array_column($v['optionArr'],'label');
-            $keys       = array_column($v['optionArr'],'name');
+            $dataTitle  = array_column($uniFieldArr,'label');
+            // $keys       = array_column($v['optionArr'],'name');
             //没有模板，使用简单的导出
-            $fileName   = ExportLogic::getInstance()->putIntoCsv($exportData,$dataTitle,'',$keys);
+            $fileName   = ExportLogic::getInstance()->putIntoCsv($exportData,$dataTitle);
             $res        = Request::domain().'/Uploads/Download/CanDelete/'.$fileName;
         }
 
@@ -567,6 +625,10 @@ trait BaseAdminTrait
      */
     protected function commExport()
     {
+        // 2023-01-09
+        ini_set('memory_limit','3072M');    // 临时设置最大内存占用为3G  
+        set_time_limit(300);                  // 设置脚本最大执行时间 为0 永不过期
+
         $btnId          = Request::param('uniBtnId','');
         //按钮信息
         $btnInfo        = UniversalItemBtnService::getInstance($btnId)->get();        
@@ -575,6 +637,7 @@ trait BaseAdminTrait
         $con = session( $this->conditionCacheKey() );
         //字段
         $info = $this->columnInfo;
+        $orderBy        = Request::param('orderBy') ? : $info['order_by'];
 
         foreach( $info['listInfo'] as $v){
             if(!$v['is_export']){
@@ -620,7 +683,7 @@ trait BaseAdminTrait
 
         $field = implode(',',$fields);
         //请求本地进行导出操作
-        $sql = Db::table( $this->columnInfo['table_name'] ) ->where( $con ) ->field( $field ) ->buildSql();
+        $sql = Db::table( $this->columnInfo['table_name'] ) ->where( $con )->order($orderBy) ->field( $field ) ->buildSql();
         Debug::debug('$sql',$sql);
         //$fileName = ExportLogic::getInstance()->exportToCsv($sql);
         //pdo高效率查询
@@ -638,14 +701,28 @@ trait BaseAdminTrait
         if($btnInfo['tpl_id']){
             //有模板，使用模板导出
             $replace                = [];
-            $res                    = GenerateTemplateLogService::export($btnInfo['tpl_id'], $exportData,$replace);
+            $resp                    = GenerateTemplateLogService::export($btnInfo['tpl_id'], $exportData,$replace);
+            $res                    = $resp['file_path'];
         } else {
             $dataTitle  = array_column($uniFieldArr,'label');
             $keys       = array_column($uniFieldArr,'name');
+            Debug::debug('$dataTitle',$dataTitle);
+            Debug::debug('$keys',$keys);
             //没有模板，使用简单的导出
-            $fileName   = ExportLogic::getInstance()->putIntoCsv($exportData,$dataTitle,'',$keys);
-            $res        = Request::domain().'/Uploads/Download/CanDelete/'.$fileName;
-        }        
+            //$fileName   = ExportLogic::getInstance()->putIntoCsv($exportData,$dataTitle,'',$keys);
+            //20220816:因调整exportDataDeal，同步调
+            if(count($exportData) > 500 ){
+                $fileName   = ExportLogic::getInstance()->putIntoCsv($exportData,$dataTitle);
+                //20220816:兼容前端
+                $res['url'] = Request::domain().'/Uploads/Download/CanDelete/'.$fileName;
+            } else {
+                $exportPathRaw  = ExportLogic::getInstance()->dataExportExcel($exportData,$dataTitle);
+                $exportPath     = str_replace('./', '/', $exportPathRaw);
+                $res['url']     = Request::domain().$exportPath;
+                $fileName       = date('YmdHis').'.xlsx';
+            }
+            $res['fileName'] = $fileName;
+        }
 
         return $this->dataReturn('数据导出',$res);
     }
@@ -764,29 +841,10 @@ trait BaseAdminTrait
         
         //表名取服务类
         $class      = DbOperate::getService( $info['table_name'] );
-        $realFieldsArr = DbOperate::realFieldsArr( $info['table_name'] );
-        $dataInfo   = $class::mainModel() ->where('id', $id ) ->field(implode(',',$realFieldsArr))->find( );
-        if(!$dataInfo){
-            return $this->errReturn('数据不存在'.$id);
-        }
-        $res        = $dataInfo->toArray();
-
-        if( isset($res['id'])){ unset($res['id']);}
-        if( isset($res['create_time'])){ unset($res['create_time']);}
-        if( isset($res['update_time'])){ unset($res['update_time']);}
-
         Db::startTrans();
-        try {
-            //保存
-            $resp   = $class::save( $res );
-            // 提交事务
-            Db::commit();
-            return $this->dataReturn('数据复制',$resp);
-        } catch (\Exception $e) {
-            // 回滚事务
-            Db::rollback();
-            return $this->throwMsg($e);
-        }
+        $res = $class::getInstance($id)->copy();
+        Db::commit();
+        return $this->dataReturn('数据复制',$res);
     }
     /**
      * 公共保存接口

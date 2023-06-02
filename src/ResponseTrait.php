@@ -3,6 +3,7 @@ namespace xjryanse\traits;
 
 use think\facade\Request;
 use xjryanse\user\service\UserService;
+use xjryanse\system\logic\ConfigLogic;
 /**
  * 返回码复用
  */
@@ -16,10 +17,13 @@ trait ResponseTrait
         $res['code']        = 0;     //20191205 数据返回的基本结构   三个字段   code=0 ,message='提示', data=>{}
         $res['message']     = $msg;
         $res['data']        = $data;
-        $res['session_id']  = session_id();
-        $res['user_id']     = session(SESSION_USER_ID);
-        if(session('recUserId')){
-            $res['recUserInfo'] = UserService::mainModel()->where('id',session('recUserId'))->field('id,nickname')->cache(86400)->find();
+        // 2022-12-17:开发模式输出
+        if(ConfigLogic::config('isDevMode')){
+            $res['session_id']  = session_id();
+            $res['user_id']     = session(SESSION_USER_ID);
+            if(session('recUserId')){
+                $res['recUserInfo'] = UserService::mainModel()->where('id',session('recUserId'))->field('id,nickname')->cache(86400)->find();
+            }
         }
         return json($res);
     }

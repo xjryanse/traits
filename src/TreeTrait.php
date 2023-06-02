@@ -2,6 +2,7 @@
 
 namespace xjryanse\traits;
 
+use xjryanse\logic\Debug;
 /**
  * 返回码复用
  */
@@ -32,15 +33,18 @@ trait TreeTrait
      * @param type $child   子元素名
      * @return type
      */
-    protected static function makeTree($arr,$pid=0,$pidname='pid',$child='list')
+    protected static function makeTree($arr,$pid='',$pidname='pid',$child='list')
     {
-	$trees = [];
-	foreach ($arr as $key => $item) {
-            if( $item[$pidname] ==$pid ){
+        // Debug::debug(__METHOD__.'$arr', $arr);
+        $trees = [];
+        foreach ($arr as $item) {
+            $iName = $item[$pidname] ? : '';
+            if( $iName == $pid ){
                 $item[$child] = self::makeTree($arr,$item['id']);
                 $trees[] = $item;
             }
-	}
-	return $trees;
+        }
+        // Debug::debug(__METHOD__.'$trees', $trees);
+        return $trees;
     }
 }
