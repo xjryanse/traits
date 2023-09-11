@@ -213,28 +213,6 @@ trait ModelTrait {
                 ? $files 
                 : ( $files ? $files[0] : []);
         return $res;
-//      20230516优化
-//        if($isMulti){
-//            //2022-12-18:解决多图bug
-//            if(!is_string($value)){
-//                return $value;
-//            }
-//            //20230414:客诉实名制多图有张空白图片
-//            $ids    = is_array($value) ? $value : explode( ',', $value );
-//            $con[]  = ['id','in', $ids ];
-//            $res = SystemFileService::mainModel()->where( $con )->field('id,file_type,file_path,file_path as rawPath')->cache(86400)->select();
-//            Debug::debug('获取图片地址Sql',SystemFileService::mainModel()->getLastSql());
-//            return $res ? $res->toArray() : $value;
-//        } else {
-//            Debug::debug('获取图片',$value);
-//            // 20220923:增加协议；避免http打不开https的情况
-//            $cacheKey = Request::scheme().'FileData_'.$value;
-//            return Cachex::funcGet($cacheKey, function() use ($value){
-//                $info = SystemFileService::mainModel()->where('id', $value )->field('id,file_type,file_path,file_path as rawPath')->cache(86400)->find();
-//                Debug::debug('获取图片地址',$info);
-//                return $info ? $info->toArray() : $value;
-//            });
-//        }
     }
     /**
      * 获取数据表前缀

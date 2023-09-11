@@ -5,6 +5,7 @@ use think\facade\Request;
 use Exception;
 /**
  * 调试复用
+ * 20230729:准备弃用
  */
 trait DebugTrait
 {    

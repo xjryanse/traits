@@ -78,7 +78,7 @@ trait StaticsModelTrait {
         $fields[]   = "date_format( `".$timeField."`, '%Y' ) AS `year`";
         $fields[]   = "date_format( `".$timeField."`, '%m' ) AS `month`";
 
-        $groupFieldStr = implode(',', $groupFields);
+        $groupFieldStr = is_array($groupFields) ? implode(',', $groupFields) : $groupFields;
         // ①提取原始数据
         $lists      = self::mainModel()
                 ->where($con)
@@ -96,6 +96,45 @@ trait StaticsModelTrait {
         $res['current_page']    = 1;
         $res['last_page']       = 1;
         return $res;
+    }
+    
+    /*
+     * 20320724:排行榜
+     * 今天，昨天，近7日，近30日
+     * @param type $groupField  聚合字段，逗号分隔
+     * @param type $sumFields   求和字段，数组
+     * @param type $orderBy     排序
+     * @param type $con         条件
+     * @return type
+     */
+    public static function staticsRanking($groupField, $sumFields, $orderBy = 'num desc',$con = []){
+        $fields = explode(',',$groupField);
+        foreach($sumFields as $v){
+            $fields[] = 'sum(`'.$v.'`) as `'.$v.'`';
+        }
+        $fields[] = 'count(1) as num';
+
+        $res = self::where($con)->field(implode(',',$fields))->group($groupField)->order($orderBy)->select();
+        return $res ? $res->toArray() : [];
+    }
+    /**
+     * 20230818:全部数据聚合统计
+     */
+    public static function staticsAll($groupField){
+        if(!$groupField){
+            throw new Exception('聚合字段必须:'.self::getTable());
+        }
+        $groupFields = explode(',',$groupField);
+        
+        $fields     = self::staticsFields();
+        $fields[]   = 'count(1) as num';
+        $fieldsArr  = array_unique(array_merge($fields,$groupFields));
+
+        $con = [];
+        $lists = self::where($con)
+                ->field(implode(',', $fieldsArr))
+                ->group($groupField)->select();
+        return $lists ? $lists->toArray() : [];
     }
 
 }

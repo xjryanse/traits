@@ -41,11 +41,15 @@ trait ResponseTrait
     /**
      * 指定code返回
      */
-    protected static function codeReturn($code= 999,$msg = '',$data=[])
+    protected static function codeReturn($code= 999,$msg = '',$data=[], $trace = [])
     {
         $res['code']    = $code;
         $res['message'] = $msg;
         $res['data']    = $data;
+        // 20230727;输出错误信息
+        if($trace){
+            $res['trace'] = $trace;
+        }
         
         return json($res);
     }

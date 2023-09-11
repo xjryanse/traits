@@ -110,7 +110,7 @@ trait BaseAdminTrait
      * 获取分页查询条件
      */
     protected function getCondition($cond = []){
-                //20211207;兼容vue前端的写法则
+        //20211207;兼容vue前端的写法则
         $dataParam         = Request::param('table_data',[] );
         if(is_string($dataParam)){
             $dataParam = json_decode($dataParam,JSON_UNESCAPED_UNICODE);
@@ -124,6 +124,11 @@ trait BaseAdminTrait
         //运行到此处 1.08s
         $this->debug('xinxi',$info);
         $whereFields     = ColumnLogic::getSearchFields($this->columnInfo);
+        // 20230609: 形如isUserExist，默认写入equal查询条件
+        $existFields = $this->service::uniExistFields();
+        $whereFields['equal'] = array_merge(Arrays::value($whereFields, 'equal',[]), $existFields);
+
+        // 20230609：添加关联
         $this->debug( '$whereFields',$whereFields );
         //【通用查询】
         $con        = array_merge( ModelQueryCon::queryCon($uparam, $whereFields) ,$cond);
@@ -161,6 +166,11 @@ trait BaseAdminTrait
     protected function commListData( $cond = [], $method = 'paginate' )
     {
         $con = $this->getCondition($cond);
+        // 20230725：有传此字段，则只提取字段用户是"我"的记录
+        $meField    = Request::param( 'meField' );
+        if($meField){
+            $con[] = [$meField,'=',session(SESSION_USER_ID)];
+        }
         //运行到此处1.56s
         //获取分页列表
         // 20220924:限制查询几条？？
@@ -185,46 +195,17 @@ trait BaseAdminTrait
         if($limit){
             $list['last_page'] = 1;
         }
+        // 20230726：性能更佳？替代方案？？
+        $uTableId = Request::param('uTableId');
+        if($uTableId){
+            $list['dynDataList'] = $uTableId ? UniversalItemTableService::getDynDataListByPageItemIdAndData($uTableId, $list['data']) : [];        
+        }
         //数据统计
 //        $list['statics']    = $class::paginateStatics( $con );
 
         return $list;
     }
     
-//    /**
-//     * 公共新增页
-//     */
-//    protected function commAdd()
-//    {
-//        $header = $this->commHeader();
-//        //请求的参数，带入表单
-//        $data   = Request::param();
-//        //默认填写当前用户的字段
-//        if(isset( $data['currentUserField'])){
-//            $currentUserField = explode(',','currentUserField');
-//            foreach( $currentUserField as $currentUserField){
-//                $data[ $currentUserField ] = session(SESSION_USER_ID);
-//            }
-//        }        
-//        $row    = $this->commDataInfo( $data , $this->columnInfo['listInfo'] );        
-//        $this->assign('row', $row);
-//        //表单类型：添加
-//        $this->assign('formType', 'add');
-//        $this->debug('row', $data );
-//        
-//        $url = isset($header['add_ajax_url']) && $header['add_ajax_url'] 
-//                ? $header['add_ajax_url']
-//                :'save';
-//        $this->assign('formUrl', url( $url , $this->paramInherit ) );
-//        $this->assign('btnName', '新增' );
-//        
-//        $isLayer = Request::param('isLayer','');                        //弹窗不是新页面
-//        if($isLayer){
-//            return $this->fetch( $this->template ? : 'common/add2');    //加载静态资源
-//        } else {
-//            return $this->fetch( $this->template ? : 'common/add');
-//        }
-//    }
     /**
      * 取信息
      * @return type
@@ -282,39 +263,7 @@ trait BaseAdminTrait
         
         return $res;
     }
-//    /**
-//     * 公共编辑页
-//     */
-//    protected function commEdit()
-//    {
-//        $header = $this->commHeader();
-//        $res = $this->commGet();
-//        if( !$res ){
-//            return ;
-//        }
-//        
-//        $resp = $this->commDataInfo( $res , $this->columnInfo['listInfo'] );
-//
-//        $this->assign('row', $resp );
-//        Debug::debug('commEdit的row', $resp );
-//        //表单类型：添加
-//        $this->assign('formType', 'edit');
-//
-//        $ajaxUrl = isset($header['edit_ajax_url']) && $header['edit_ajax_url'] 
-//                ? $header['edit_ajax_url']
-//                :'update';
-//        //覆盖initAdminAssign中的方法，重新渲染字段信息：因有些字段会根据实际数据的类型进行过滤
-//        $this->assign('formUrl', url( $ajaxUrl ,$this->paramInherit) );
-//        $this->assign('btnName', '编辑' );
-//
-//        $isLayer = Request::param('isLayer','');                        //弹窗不是新页面
-//        Debug::debug('$isLayer', $isLayer );
-//        if($isLayer){
-//            return $this->fetch( $this->template ? : 'common/add2');    //加载静态资源
-//        } else {
-//            return $this->fetch( $this->template ? : 'common/add');
-//        }
-//    }
+
     /**
      * 公共删除接口
      */
@@ -391,7 +340,7 @@ trait BaseAdminTrait
     protected function commSaveRam()
     {
         //取请求字段内容
-        $postData           = Request::param();
+        $postData           = $this->data ? : Request::param();
         $info               = $this->columnInfo;
         //数据转换
         $data = $this->commDataCov( $postData , $info);
