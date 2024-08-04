@@ -42,7 +42,10 @@ trait WePubAuthTrait
             return ;
         }
         //授权账户
+        // 20230919:调试体检系统，发现性能问题
         $this->initWePubAccount( $acid );
+        // dump('调试中123');exit;
+        
         //没有粉丝token，跳转授权页面
         Debug::debug('$this->wePubFans',$this->wePubFans);
         if(!$this->wePubFans->token){
@@ -60,6 +63,7 @@ trait WePubAuthTrait
      */
     protected function initWePubAccount( $acid )
     {
+
         //获取acid
         if(!$acid){
             $acid = SystemCompanyService::getInstance( session(SESSION_COMPANY_ID) )->fWePubId();
@@ -80,6 +84,7 @@ trait WePubAuthTrait
         $this->openid       = session($openidCacheKey) ? : cache($openidCacheKey);
         //会话继承
         session( $openidCacheKey, $this->openid );
+
         $this->wePubFans    = new Fans( $this->wePubAcid, $this->openid);
         $this->wxUrl        = $this->wePubFans->wxUrl;
     }

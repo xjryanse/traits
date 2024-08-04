@@ -132,4 +132,40 @@ trait MiddleModelTrait {
         }
         return $lists;
     }
+    /**
+     * 绑定数据
+     * @param type $mainField       主字段
+     * @param type $mainIds         主字段id数组
+     * @param type $subField        从字段
+     * @param type $subIds          从字段id数组
+     * @param type $clear           是否清理原有数据(主字段维度)
+     */
+    public static function middleBindRam($mainField,$mainIds, $subField, $subIds, $clear = false){
+        // 【1】清理数据
+        if($clear){
+            $con = [];
+            $con[] = [$mainField, 'in', $mainIds];
+            $ids = self::where($con)->column('id');
+            foreach($ids as $id){
+                // 循环删除
+                self::getInstance($id)->deleteRam();
+            }
+        }
+        // 【2】处理数据
+        if(!is_array($mainIds)){
+            $mainIds = [$mainIds];
+        }
+        if(!is_array($subIds)){
+            $subIds = [$subIds];
+        }
+
+        $dataArr = [];
+        foreach($mainIds as $mainId){
+            foreach($subIds as $subId){
+                $dataArr[] = [$mainField => $mainId, $subField=>$subId];
+            }
+        }
+        // 写入数据库
+        return self::saveAllRam($dataArr);
+    }
 }

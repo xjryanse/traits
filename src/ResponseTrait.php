@@ -4,6 +4,8 @@ namespace xjryanse\traits;
 use think\facade\Request;
 use xjryanse\user\service\UserService;
 use xjryanse\system\logic\ConfigLogic;
+use xjryanse\logic\CodeClass;
+use xjryanse\logic\DbOperate;
 /**
  * 返回码复用
  */
@@ -17,15 +19,8 @@ trait ResponseTrait
         $res['code']        = 0;     //20191205 数据返回的基本结构   三个字段   code=0 ,message='提示', data=>{}
         $res['message']     = $msg;
         $res['data']        = $data;
-        // 2022-12-17:开发模式输出
-        if(ConfigLogic::config('isDevMode')){
-            $res['session_id']  = session_id();
-            $res['user_id']     = session(SESSION_USER_ID);
-            if(session('recUserId')){
-                $res['recUserInfo'] = UserService::mainModel()->where('id',session('recUserId'))->field('id,nickname')->cache(86400)->find();
-            }
-        }
-        return json($res);
+        // 拼接开发模式参数
+        return json(array_merge($res,self::devModeRes()));
     }
     /**
      * 失败返回
@@ -35,7 +30,7 @@ trait ResponseTrait
         $res['code']    = 1;
         $res['message'] = $msg;
         $res['data']    = $data;
-        return json($res);        
+        return json(array_merge($res,self::devModeRes()));
     }
     
     /**
@@ -51,7 +46,7 @@ trait ResponseTrait
             $res['trace'] = $trace;
         }
         
-        return json($res);
+        return json(array_merge($res,self::devModeRes()));
     }
 
     /**
@@ -103,4 +98,31 @@ trait ResponseTrait
         }
     }
     
+    /**
+     * 20240419:开发模式参数
+     * @return string
+     */
+    private static function devModeRes(){
+        if(!ConfigLogic::config('isDevMode')){
+            return [];
+        }
+        $res                =  [];
+        $res['session_id']  = session_id();
+        $res['user_id']     = session(SESSION_USER_ID);
+        $res['requestIp']   = Request::ip();
+        if(session('recUserId')){
+            $res['recUserInfo'] = UserService::mainModel()->where('id',session('recUserId'))->field('id,nickname')->cache(86400)->find();
+        }
+        // 20240419:方便本地调试
+        $controller             = Request::controller();
+        $admKey                 = Request::param('admKey');
+        $tableName              = DbOperate::controllerAdmKeyToTable($controller, $admKey);
+        $tableService           = DbOperate::getService($tableName);
+        $serviceFilePath        = CodeClass::classGetFilePath($tableService);
+        $projectBasePath        = dirname($_SERVER['DOCUMENT_ROOT']);     
+        $localPath              = str_replace($projectBasePath, '', $serviceFilePath);
+        $codePath               = 'http://localhost:9633/cmd.php?filePath='.$localPath.'&startLine=1&host='.Request::host();
+        $res['NBCodePath']      = $codePath;
+        return $res;
+    }
 }

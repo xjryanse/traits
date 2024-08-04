@@ -53,29 +53,5 @@ trait BaseWebTrait
         //推荐人信息
         $this->recUserInfo      = $this->recUserId  ? UserService::getInstance($this->recUserId)->get( 60 ) : [] ; 
     }
-    /**
-     * 【2】初始化参数渲染
-     */
-    protected function initWebAssign()
-    {
-        /*
-        //继承参数渲染
-        $this->assign( 'paramInherit', $this->paramInherit );
-        //comKey：公司key
-        $this->assign( SESSION_COMPANY_KEY, $this->scopeCompanyKey );
-        //公司信息
-        $this->assign( 'companyInfo', $this->companyInfo );
-        //公司码
-        $this->assign(SESSION_COMPANY_ID,$this->scopeCompanyId);
-        //当前请求地址
-        $this->assign( 'myRequestUrl', $this->myRequestUrl );
-        //系统配置项数组
-        $this->assign( 'sysConfigs', $this->sysConfigs );
-        //推荐人Id
-        $this->assign( 'recUserId', $this->recUserId );
-        //推荐人信息
-        $this->assign( 'recUserInfo', $this->recUserInfo );
-         */
-    }
 
 }

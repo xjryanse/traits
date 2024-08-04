@@ -3,7 +3,7 @@ namespace xjryanse\traits;
 
 use xjryanse\logic\DbOperate;
 /**
- * 分表服务类复用：只能用于模型对应service类中。
+ * 垂直分表服务类复用：只能用于模型对应service类中。
  * 依赖于MainModelTrait类库
  */
 trait SubServiceTrait {

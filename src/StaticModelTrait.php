@@ -2,12 +2,12 @@
 namespace xjryanse\traits;
 
 use xjryanse\logic\Cachex;
+use xjryanse\logic\Debug;
 use xjryanse\logic\Arrays;
 use xjryanse\logic\Arrays2d;
-use xjryanse\logic\Debug;
-use xjryanse\logic\DbOperate;
 use think\facade\Cache;
 use xjryanse\logic\Runtime;
+use think\Db;
 /**
  * 静态模型复用
  * (配置式数据表)
@@ -42,6 +42,12 @@ trait StaticModelTrait {
         Cache::set($keyName, array_unique($keyNameArr));
     }
     
+    /**
+     * 
+     * @useFul 1
+     * @param type $companyId
+     * @return type
+     */
     public static function staticBaseCacheKey($companyId = ''){
         if(!$companyId){
             $companyId = session(SESSION_COMPANY_ID);
@@ -52,6 +58,7 @@ trait StaticModelTrait {
     
     /**
      * 仅从数据表查询出原始数据（不做字段触发器处理）
+     * @useFul 1
      * @describe 解决触发器死循环，兼顾性能考虑
      * @param type $companyId
      * @return type
@@ -85,22 +92,37 @@ trait StaticModelTrait {
         return $res;
     }
     
-    // 全量加载数据
+    /**
+     * 全量加载数据
+     * @useFul 1
+     * @param type $companyId
+     * @return type
+     */
     public static function staticListsAll($companyId = ''){
         $res = self::staticListsAllDb($companyId);
+        // 20231223
+        if (method_exists(__CLASS__, 'comCateLevelCommCon')) {
+            $comCateLevelCon = self::comCateLevelCommCon();
+            $tableName = self::mainModel()->getTable();
+            $arr = Db::table($tableName)->where($comCateLevelCon)->select();
+            // $arr = self::comCateLevelListArr();
+            $res = array_merge($arr,$res);
+        }
+
         // 20230619:存静态变量
         self::$staticListsAll = self::dataDealAttr($res);
         return self::$staticListsAll ;
     }
     /**
      * 条件查询(list)
+     * @useFul 1
      * @param type $con
      * @param type $companyId
      * @return type
      */
     public static function staticConList($con = [],$companyId = '',$sort="",$field=[]){
         $keyMd5     = md5(json_encode($con));
-        $key        = self::staticBaseCacheKey($companyId).'_List'.$keyMd5;
+        $key        = self::staticBaseCacheKey($companyId).$sort.'_List'.$keyMd5;
         self::staticCacheKeysSet($companyId, $key);
         return Cachex::funcGet( $key, function() use ($con, $companyId, $sort, $field ){
             // 判断数据库量是否过大
@@ -126,6 +148,17 @@ trait StaticModelTrait {
             
         });
     }
+    /**
+     * 20231212:只取id，静态
+     * @param type $con
+     * @param type $companyId
+     * @return type
+     */
+    public static function staticConIds($con = [],$companyId = ''){
+        $arr = self::staticConList($con, $companyId);
+        return Arrays2d::uniqueColumn($arr, 'id');
+    }
+    
     /**
      * 20220619:增加count
      * @param type $con
@@ -225,6 +258,7 @@ trait StaticModelTrait {
      * 20230905
      * 数据表全部记录数量
      * 当数据表记录数量过大时，性能
+     * @useFul 1
      * @param type $con
      * @param type $companyId
      * @return type
@@ -241,11 +275,12 @@ trait StaticModelTrait {
     }
     /**
      * 数据库量是否过大
-     * 以500条为界限
-     * 超过500条的，查询直接查数据库
+     * 以1000条为界限
+     * 超过1000条的，查询直接查数据库
+     * @useFul 1
      */
     public static function staticIsLarge($companyId){
-        return self::staticAllRecordCount($companyId) > 500;
+        return self::staticAllRecordCount($companyId) > 1000;
     }
     
 }

@@ -1,7 +1,7 @@
 <?php
 namespace xjryanse\traits;
 
-use app\generate\service\GenerateTemplateLogService;
+use xjryanse\generate\service\GenerateTemplateLogService;
 use Exception;
 use think\Db;
 use think\facade\Request as TpRequest;
@@ -51,7 +51,7 @@ trait BaseAdminTrait
         // 20230526:表名对应的服务类库
         $this->service          = $this->columnInfo ? DbOperate::getService( $this->columnInfo['table_name'] ) : null;
 
-        self::debug('$this->columnInfo',$this->columnInfo);
+        // self::debug('$this->columnInfo',$this->columnInfo);
         //编辑方法才去取
         if(Request::action() == 'edit'){
             $idGetInfo  = $this->commGet();
@@ -78,19 +78,7 @@ trait BaseAdminTrait
         Debug::debug('getColumnInfo的信息',$controller.'-'.$admKey);
         return ColumnLogic::defaultColumn( $controller, $admKey ,'', $cateFieldValues, $methodKey, $data);
     }
-    
-    /**
-     * 【2】初始化参数渲染
-     */
-    protected function initAdminAssign()
-    {
-        //字段信息
-        $this->assign( 'columnInfo', $this->columnInfo );
-        //对应表名
-        $this->assign( 'admTable', $this->admTable );
-        //对应表的id
-        $this->assign( 'admTableId', $this->admTableId );
-    }
+
     /**
      * 查询条件缓存key：数据查询时存，数据导出时用
      */
@@ -118,18 +106,26 @@ trait BaseAdminTrait
         $paramRaw   = Request::post();
         $param      = array_merge($paramRaw, $dataParam);
         $uparam     = $this->unsetEmpty($param);
-        $this->debug( '$uparam',$uparam );
+        // $this->debug( '$uparam',$uparam );
 
         $info       = $this->columnInfo;
         //运行到此处 1.08s
-        $this->debug('xinxi',$info);
+        // $this->debug('xinxi',$info);
+        //【1】数据表配置
         $whereFields     = ColumnLogic::getSearchFields($this->columnInfo);
-        // 20230609: 形如isUserExist，默认写入equal查询条件
+        //【2】20230609: 形如isUserExist，默认写入equal查询条件
         $existFields = $this->service::uniExistFields();
         $whereFields['equal'] = array_merge(Arrays::value($whereFields, 'equal',[]), $existFields);
-
+        //【3】20231113: 关联映射字段，默认写入equal查询条件
+        $reflectFields = $this->service::uniReflectFields();
+        $whereFields['equal'] = array_merge(Arrays::value($whereFields, 'equal',[]), $reflectFields);
+        //【4】20231124:入参指定字段
+        $pEqualFields = explode(',',Request::param('equalFields',''));
+        if($pEqualFields){
+            $whereFields['equal'] = array_merge(Arrays::value($whereFields, 'equal',[]), $pEqualFields);
+        }
         // 20230609：添加关联
-        $this->debug( '$whereFields',$whereFields );
+        // $this->debug( '$whereFields',$whereFields );
         //【通用查询】
         $con        = array_merge( ModelQueryCon::queryCon($uparam, $whereFields) ,$cond);
         //【特殊查询】：20210513
@@ -147,14 +143,22 @@ trait BaseAdminTrait
         }
         //年月渲染，根据是否设置了字段来判断显示
         //20220407,增加判断yearmonth有值
-        if($info['yearmonth_field'] && Arrays::value($this->data, 'yearmonth')){
-            $yearMonthTimeCon = $this->yearMonthTimeCon( $info['yearmonth_field'] );
-            if( $yearMonthTimeCon ){
-                $con = array_merge( $con,$yearMonthTimeCon );
-            }
+        $timeArr    = Datetime::paramScopeTime($uparam);
+        if($timeArr && $info['yearmonth_field']){
+            $fKey   = $info['yearmonth_field'];
+            $con    = array_merge($con, Datetime::scopeTimeCon($fKey, $timeArr));
+        }
+
+        // 20231019:日期
+        if($this->service::getTimeField() && Arrays::value($this->data, 'yearmonthDate')){
+            $timeField = $this->service::getTimeField();
+            $con[] = [$timeField,'>=',Datetime::dateStartTime($this->data['yearmonthDate'])];
+            $con[] = [$timeField,'<=',Datetime::dateEndTime($this->data['yearmonthDate'])];
         }
         
-        $this->debug( '查询条件con',$con );
+        // dump($this->service::getTimeField());
+        
+        // $this->debug( '查询条件con',$con );
         //查询条件缓存（用于导出）
         session($this->conditionCacheKey(),$con);
         return $con;
@@ -197,8 +201,10 @@ trait BaseAdminTrait
         }
         // 20230726：性能更佳？替代方案？？
         $uTableId = Request::param('uTableId');
-        if($uTableId){
-            $list['dynDataList'] = $uTableId ? UniversalItemTableService::getDynDataListByPageItemIdAndData($uTableId, $list['data']) : [];        
+        if($list && $uTableId){
+            $list['dynDataList'] = $uTableId && $list['data'] 
+                    ? UniversalItemTableService::getDynDataListByPageItemIdAndData($uTableId, $list['data']) 
+                    : [];        
         }
         //数据统计
 //        $list['statics']    = $class::paginateStatics( $con );
@@ -224,9 +230,14 @@ trait BaseAdminTrait
         if($id){
             $res    = $this->service::getInstance( $id )->info( );
         }
-        return $id && $res 
+        $resp = $id && $res 
                 ? (is_array($res) ? $res : $res->toArray() )
                 : [];
+        // TODO:临时控制前端切换
+        if(TpRequest::header('source') == 'admin'){
+            $resp['valTab'] = 'base';
+        }
+        return $resp;
     }
     /**
      * 20230222：跳转的导出，准备弃用了，使用download方法替代
@@ -565,6 +576,8 @@ trait BaseAdminTrait
             $fileName   = ExportLogic::getInstance()->putIntoCsv($exportData,$dataTitle);
             $res        = Request::domain().'/Uploads/Download/CanDelete/'.$fileName;
         }
+        // TODO；准备替换成如下方法。
+        // $res        = UniversalItemBtnService::getInstance($btnId)->exportPack($pgLists['data'],$pgLists['dynDataList'],$pgLists['sumData']);
 
         return $this->dataReturn('数据导出',$res);
     }
@@ -582,8 +595,14 @@ trait BaseAdminTrait
         //按钮信息
         $btnInfo        = UniversalItemBtnService::getInstance($btnId)->get();        
         $uniFieldArr    = UniversalItemBtnService::getInstance($btnId)->getExportFieldArr();
-        
+
         $con = session( $this->conditionCacheKey() );
+        // 20240324：可以选择部分项目导出
+        if(Request::param('id')){
+            $ids = is_array(Request::param('id')) ? Request::param('id') : explode(',',Request::param('id'));
+            $con[] = ['id','in',$ids];
+        }
+        
         //字段
         $info = $this->columnInfo;
         $orderBy        = Request::param('orderBy') ? : $info['order_by'];
@@ -610,7 +629,7 @@ trait BaseAdminTrait
                 $str = Sql::buildCaseWhen($v['name'], $v['option'], $v['label']) ;
             } else if( $v['name'] ){
                 //20211220,探索更优
-                if(Strings::isEndWith($v['name'],'id') || Strings::isEndWith($v['name'],'_no')){
+                if(!$btnInfo['tpl_id'] && (Strings::isEndWith($v['name'],'id') || Strings::isEndWith($v['name'],'_no')) ){
                     $str = ' concat(`'. $v['name']."`,'\t') ";
                 } else {
                     $str = '`' . $v['name'] . '`';
@@ -638,22 +657,23 @@ trait BaseAdminTrait
         //pdo高效率查询
         $rows = DbOperate::pdoQuery($sql);
         //取动态枚举数据
-        $dynDataList    = SystemColumnListService::getDynDataListByColumnIdAndData($info['id'], $rows);
-        //导出结果加上动态枚举数据进行拼接转换
-        $exportData     = UniversalItemTableService::exportDataDeal($uniFieldArr, $rows, $dynDataList);
-        if($this->isDebug()){
-            $this->debug('$con',$con);
-            $this->debug('$field',$field);
-            $this->debug('$rows',$rows);
-            $this->debug('$exportData',$exportData);
-        }
+        // $dynDataList    = SystemColumnListService::getDynDataListByColumnIdAndData($info['id'], $rows);
+        $pageItemId     = UniversalItemBtnService::getInstance($btnId)->getExportTablePageItemId();
+        $dynDataList    = UniversalItemTableService::getDynDataListByPageItemIdAndData($pageItemId, $rows);
         if($btnInfo['tpl_id']){
+            //导出结果加上动态枚举数据进行拼接转换
+            $exportData             = UniversalItemTableService::exportDataDeal($uniFieldArr, $rows, $dynDataList);
+            foreach($exportData as $k=>&$r){
+                $r['i'] = $k+1;
+            }
             //有模板，使用模板导出
             $replace                = [];
             $resp                    = GenerateTemplateLogService::export($btnInfo['tpl_id'], $exportData,$replace);
             $res                    = $resp['file_path'];
         } else {
-            $dataTitle  = array_column($uniFieldArr,'label');
+            $exportData     = UniversalItemTableService::exportDataDeal($uniFieldArr, $rows, $dynDataList);
+            // 20240108:反馈无法导出，加name
+            $dataTitle  = array_column($uniFieldArr,'label','name');
             $keys       = array_column($uniFieldArr,'name');
             Debug::debug('$dataTitle',$dataTitle);
             Debug::debug('$keys',$keys);
@@ -711,8 +731,8 @@ trait BaseAdminTrait
     protected function commHeader()
     {
         $header     = $this->columnInfo;
-        $this->assign('header', $header );
-        $this->debug('header', $header );
+        // $this->assign('header', $header );
+        // $this->debug('header', $header );
         return $header;
     }
     /**
@@ -774,20 +794,6 @@ trait BaseAdminTrait
             return $this->errReturn('id必须');
         }
         $info       = $this->columnInfo;
-        //校验是否可复制
-        /****   20220308,寻求更优替代
-            $canCopy = false;
-            foreach( $info['operateInfo']  as $v){
-                if($v['operate_key']  == 'copy' ){
-                    $canCopy = true;
-                }
-            }
-
-            if(!$canCopy){
-                return $this->errReturn('本表不可复制');
-            }
-         */
-        
         //表名取服务类
         $class      = DbOperate::getService( $info['table_name'] );
         Db::startTrans();

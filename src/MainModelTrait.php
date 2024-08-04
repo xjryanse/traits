@@ -10,10 +10,7 @@ use xjryanse\logic\Debug;
 use xjryanse\system\service\SystemServiceMethodLogService;
 use xjryanse\system\service\SystemColumnService;
 use xjryanse\system\service\SystemColumnListService;
-// use xjryanse\system\service\SystemFieldsInfoService;
-// use xjryanse\system\service\SystemFieldsManyService;
 use xjryanse\system\service\SystemAsyncTriggerService;
-use xjryanse\finance\service\FinanceTimeService;
 use app\system\AsyncOperate\SendTemplateMsg;
 use think\Db;
 use Exception;
@@ -22,18 +19,6 @@ use Exception;
  * 主模型复用
  */
 trait MainModelTrait {
-
-    //复用类需实现
-//    protected static $mainModelClass;
-    /**
-     * 20220620:用于调试死循环
-    self::$queryCount = self::$queryCount +1;
-    // 20220312;因为检票，从20调到200；TODO检票的更优方案呢？？
-    $limitTimes = 20;
-    if(self::$queryCount > $limitTimes){
-        throw new Exception('$queryCount 次数超限'.$limitTimes);
-    }
-     */
 
     protected static $mainModel;
     
@@ -120,13 +105,15 @@ trait MainModelTrait {
      * 条件给字段添加索引
      */
     protected static function condAddColumnIndex($con = []) {
-        if (!$con) {
+        return true;
+        // 无条件或非开发环境，不加索引
+        if (!$con || !Debug::isDevIp()) {
             return false;
-        } else {
-            return true;     //去掉本行后会执行自动添加索引，一般应于项目正式后关闭
         }
+        // 加索引动作
         foreach ($con as $conArr) {
-            if (is_array($conArr)) {
+            // 20240505:只有等号才加索引:一些比较短的还是不加吧
+            if (is_array($conArr) && $conArr[1] == '=' && mb_strlen($conArr[2]) > 10) {
                 DbOperate::addColumnIndex(self::mainModel()->getTable(), $conArr[0]);
             }
         }
@@ -136,7 +123,7 @@ trait MainModelTrait {
 
     protected static function commSave($data) {
         //预保存数据：id，app_id,company_id,creater,updater,create_time,update_time
-        self::preSaveData($data);        
+        self::preSaveData($data);
         //额外添加详情信息：固定为extraDetail方法
         if (method_exists(__CLASS__, 'extraPreSave')) {
             self::extraPreSave($data, $data['id']);      //注：id在preSaveData方法中生成
@@ -249,22 +236,6 @@ trait MainModelTrait {
 
         return $res;
     }
-    /*
-     * 20230729:数据缓存清理
-     * 一般用于增删改之后清理缓存数据
-     */
-    protected static function dataCacheClear(){
-        /**
-         * 2022-12-15:增加静态配置清缓存
-         */
-        if (method_exists(__CLASS__, 'staticCacheClear')) {
-            self::staticCacheClear();
-        }
-        //20230729:全量缓存表重载
-        self::reloadCacheToFile();
-        // 20230709:清除统计数据缓存
-        self::countCacheClear();
-    }
 
     /*     * ************************操作方法******************************* */
 
@@ -330,7 +301,10 @@ trait MainModelTrait {
         //saveAll方法新增数据默认会自动识别数据是需要新增还是更新操作，当数据中存在主键的时候会认为是更新操作，如果你需要带主键数据批量新增，可以使用下面的方式
         // $res = self::mainModel()->saveAll( $tmpArr ,false );
         // Debug::dump($tmpArr);
-        $res = self::saveAllX($tmpArr);
+        // 20231204:导入时是否覆盖
+        $isCover = property_exists(__CLASS__, 'isSaveAllCover')? self::$isSaveAllCover : false;
+        
+        $res = self::saveAllX($tmpArr, $isCover);
         // 2022-12-16
         self::dataCacheClear();
         
@@ -339,14 +313,6 @@ trait MainModelTrait {
             self::extraAfterSaveAll($tmpArr);      //注：id在preSaveData方法中生成
         }
         
-//        // 是否需要处理缓存数据
-//        if($dealCache){
-//            foreach( $tmpArr as $v){
-//                if(isset($v['id']) && $v['id']){
-//                    self::_cacheUpdate($v['id']);
-//                }
-//            }
-//        }
         return $res;
     }
     /**
@@ -356,6 +322,12 @@ trait MainModelTrait {
      * @return type
      */
     public static function saveAllRam(array &$data, $preData = []) {
+        // 20230923:批量保存前处理
+        if (method_exists(__CLASS__, 'ramPreSaveAll')) {
+            //注：id在preSaveData方法中生成
+            self::ramPreSaveAll($data);      
+        }
+
         foreach ($data as &$v) {
             $tmpData = array_merge($preData, $v);
             self::saveRam($tmpData);
@@ -367,7 +339,7 @@ trait MainModelTrait {
      * 【增强版】批量保存数据
      * @param type $dataArr
      */
-    public static function saveAllX($dataArr) {
+    public static function saveAllX($dataArr, $isCover = false) {
         if (!$dataArr) {
             return false;
         }
@@ -385,7 +357,7 @@ trait MainModelTrait {
         }
         // 20220621
         foreach($saveArr as $arr){
-            $sql = DbOperate::saveAllSql($tableName, array_values($arr));
+            $sql = DbOperate::saveAllSql($tableName, array_values($arr),[],$isCover);
             Db::query($sql);
         }
         return true;
@@ -442,32 +414,6 @@ trait MainModelTrait {
     }
 
     /**
-     * 关联表数据保存
-     * @param type $mainField   主字段
-     * @param type $mainValue   主字段值
-     * @param type $arrField    数组字段
-     * @param type $arrValues   数组值：一维数据写入数组字段，二维数据直接存储
-     */
-    public static function midSave($mainField, $mainValue, $arrField, $arrValues) {
-        self::checkTransaction();
-
-        $con[] = [$mainField, '=', $mainValue];
-        self::mainModel()->where($con)->delete();
-        $tmpData = [];
-        foreach ($arrValues as $value) {
-            if (is_array($value)) {
-                $tmp = $value;
-            } else {
-                $tmp = [];
-                $tmp[$arrField] = $value;
-            }
-            $tmp[$mainField] = $mainValue;
-            $tmpData[] = $tmp;
-        }
-        return self::saveAll($tmpData);
-    }
-
-    /**
      * 更新
      * @param array $data
      * @return type
@@ -506,10 +452,7 @@ trait MainModelTrait {
         $con[] = [$key, '=', $preValue];
         $con[] = ['id', '=', $this->uuid];
         $res = $this->update([$key => $aftValue]);
-//        $res = self::mainModel()->where( $con )->update([$key=>$aftValue]);
-//        if($res){
-//            self::_cacheUpdate( $this->uuid );
-//        }
+
         //更新缓存
         return $res;
     }
@@ -525,7 +468,8 @@ trait MainModelTrait {
             $this->extraPreDelete();      //注：id在preSaveData方法中生成
         }
         // 20230601:最后一道防线
-        $tableName = self::getTable();
+        // $tableName = self::getTable();
+        $tableName = self::getRawTable();
         DbOperate::checkCanDelete($tableName, $this->uuid);
         //20220515;优化跳转
         $rawData = $this->get();
@@ -546,62 +490,38 @@ trait MainModelTrait {
         return $res;
     }
 
-    /*     * ************************查询方法******************************* */
-
-
-    /*     * ************************校验方法******************************* */
-
-    /**
-     * 校验事务是否处于开启状态
-     * @throws Exception
-     */
-    public static function checkTransaction() {
-        if (!self::mainModel()->inTransaction()) {
-            throw new Exception('请开启数据库事务');
-        }
-    }
-
-    /**
-     * 校验事务是否处于关闭状态
-     * @throws Exception
-     */
-    public static function checkNoTransaction() {
-        if (self::mainModel()->inTransaction()) {
-            throw new Exception('请关闭事务');
-        }
-    }
-
-    /**
-     * 校验是否当前公司数据
-     * @throws Exception
-     */
-    public static function checkCurrentCompany($companyId) {
-        //当前无session，或当前session与指定公司id不符
-        if (!session(SESSION_COMPANY_ID) || session(SESSION_COMPANY_ID) != $companyId) {
-            throw new Exception('未找到数据项~~');
-        }
-    }
-
-    /**
-     * 校验系统账期
-     * 写在这里方便不需要每个类都引入FinanceTimeService 包
-     */
-    public static function checkFinanceTimeLock($time) {
-        FinanceTimeService::checkLock($time);
-    }
-
     /*
      * 20220619 只保存到内存中
      */
     public static function saveRam($data) {
         self::queryCountCheck(__METHOD__);
         global $glSaveData;
+        // 20240319:在此写入一些参数，is_delete等，供筛选条件查询
         self::preSaveData($data);
         // 20230730：增，在ramPreSave中， updateAuditStatusRam 有循环调用(报销)；
         self::getInstance($data['id'])->setUuData($data, true);
         if (method_exists(__CLASS__, 'ramPreSave')) {
             self::ramPreSave($data, $data['id']);      //注：id在preSaveData方法中生成
         }
+        self::doSaveRam($data);
+
+        //更新完后执行：类似触发器
+        if (method_exists(__CLASS__, 'ramAfterSave')) {
+            self::ramAfterSave($data, $data['id']);
+        }
+        //20230729
+        self::dataCacheClear();
+
+        return $data;
+    }
+    
+    public static function doSaveRam($data){
+        // 20240422 
+        if (!isset($data['id']) || !$data['id']) {
+            $data['id'] = self::mainModel()->newId();
+        }
+        
+        global $glSaveData;        
         // 原，再次写入更新
         self::getInstance($data['id'])->setUuData($data, true);
         //20220619 新增核心
@@ -617,17 +537,15 @@ trait MainModelTrait {
                 //dump('获取器'.$setAttrKey);
             }
         }
-
-        $glSaveData[$tableName][$data['id']] = $data;
-        // 20230519
-        self::pushObjAttrs($data);
-        //更新完后执行：类似触发器
-        if (method_exists(__CLASS__, 'ramAfterSave')) {
-            self::ramAfterSave($data, $data['id']);
+        // 20240503
+        if (method_exists(__CLASS__, 'savePreCheck')) {
+            self::savePreCheck($data);      //注：id在preSaveData方法中生成
         }
-        //20230729
-        self::dataCacheClear();
-
+        $glSaveData[$tableName][$data['id']] = $data;
+        // Debug::dump('这里');
+        // 20230519
+        // 20240306 发现体检模块会卡??
+        self::pushObjAttrs($data);
         return $data;
     }
     /**
@@ -635,10 +553,19 @@ trait MainModelTrait {
      * @param type $data
      */
     protected static function pushObjAttrs($data){
+        // dump('-----');
+        // dump(self::mainModel()->getTable());
+        // dump($data);
         self::dealObjAttrsFunc($data, function($baseClass, $keyId, $property, $conf) use ($data){
             $condition = Arrays::value($conf, 'condition' , []);
+            // dump($baseClass);
+            // dump('-----------');
+            // dump($baseClass::getInstance($keyId)->objAttrsHasData($property));
             // 20230730
-            if (Arrays::isMatch($data, $condition) && method_exists($baseClass, 'objAttrsPush')) {
+            // 20240313 改$baseClass::getInstance($keyId)->objAttrsHasData($property) 为 objAttrsHasQuery
+            if (Arrays::isMatch($data, $condition) && method_exists($baseClass, 'objAttrsPush')
+                // 20240306：发现体检板块卡顿
+                && $baseClass::getInstance($keyId)->objAttrsHasQuery($property)){
                 $baseClass::getInstance($keyId)->objAttrsPush($property,$data);
             }
         });
@@ -682,7 +609,6 @@ trait MainModelTrait {
         $tableName = self::mainModel()->getTable();
         $info = $this->get(0);
         if (!$info) {
-//            return false;
             throw new Exception('记录不存在' . $tableName . '表' . $this->uuid);
         }
         if (isset($info['is_lock']) && $info['is_lock']) {
@@ -692,9 +618,6 @@ trait MainModelTrait {
         if(isset($data['id'])){
             unset($data['id']);
         }
-//        if (!isset($data['id']) || !$data['id']) {
-//            $data['id'] = $this->uuid;
-//        }
 
         $data['updater'] = session(SESSION_USER_ID);
         $data['update_time'] = date('Y-m-d H:i:s');
@@ -704,8 +627,11 @@ trait MainModelTrait {
         }
         //20220620:封装
         $dataSave = $this->doUpdateRam($data);
+        // 20231107
+        $infoArr = is_object($info) ? $info->toArray() : $info;
+        $objAttrData = array_merge($infoArr,$data);
         // 20230519:更新
-        self::updateObjAttrs($this->get(), $this->uuid);
+        self::updateObjAttrs($objAttrData, $this->uuid);
 
         //更新完后执行：类似触发器
         if (method_exists(__CLASS__, 'ramAfterUpdate')) {
@@ -722,9 +648,11 @@ trait MainModelTrait {
      * @param type $uuid    id单传
      */
     protected static function updateObjAttrs($data, $uuid){
+        // dump($data);
         self::dealObjAttrsFunc($data, function($baseClass, $keyId, $property, $conf) use ($data,$uuid){
             $condition = Arrays::value($conf, 'condition' , []);
-            if (Arrays::isMatch($data, $condition) && method_exists($baseClass, 'objAttrsUpdate')) {
+            if (Arrays::isMatch($data, $condition) && method_exists($baseClass, 'objAttrsUpdate')
+                    && $baseClass::getInstance($keyId)->objAttrsHasData($property)){
                 $baseClass::getInstance($keyId)->objAttrsUpdate($property,$uuid,$data);            
             }
         });
@@ -738,7 +666,6 @@ trait MainModelTrait {
         $class = '\\'.__CLASS__;
         $con[] = ['class', '=', $class];
         $lists1 = DbOperate::objAttrConfArr($con);
-        
         //20230608:TODO临时过渡
         foreach($lists1 as &$v){
             $v['inList']    = true;
@@ -778,6 +705,9 @@ trait MainModelTrait {
      * 不关联执行前后触发的更新
      */
     public function doUpdateRam($data){
+        // 20240503
+        // 20240507:财务反馈无法销账注释
+        // self::queryCountCheck(__METHOD__, 2000);
         global $glUpdateData,$glSaveData;
         $tableName = self::mainModel()->getTable();
         // 设定内存中的值
@@ -810,6 +740,7 @@ trait MainModelTrait {
                     ? array_merge($glUpdateData[$tableName][$this->uuid], $dataSave) 
                     : $dataSave;
         }
+
         // 设定内存中的值
         // return $dataSave;
         // $dataSave经获取器处理，对图片兼容不好
@@ -828,6 +759,11 @@ trait MainModelTrait {
         if (method_exists(__CLASS__, 'ramPreDelete')) {
             $this->ramPreDelete();      //注：id在preSaveData方法中生成
         }
+        // 20230912:谨慎测试
+        // $tableName = self::getTable();
+        $tableName = self::getRawTable();
+        DbOperate::checkCanDelete($tableName, $this->uuid);
+
         $this->doDeleteRam();
         // 20230519:更新
         self::delObjAttrs($rawData, $this->uuid);
@@ -848,11 +784,14 @@ trait MainModelTrait {
     protected static function delObjAttrs($data, $uuid){
         self::dealObjAttrsFunc($data, function($baseClass, $keyId, $property, $conf) use ($data, $uuid){
             $condition = Arrays::value($conf, 'condition' , []);
-            if (Arrays::isMatch($data, $condition) && method_exists($baseClass, 'objAttrsUnSet')) {
+            if (Arrays::isMatch($data, $condition) && method_exists($baseClass, 'objAttrsUnSet')
+                // 20240306：发现体检板块卡顿
+                && $baseClass::getInstance($keyId)->objAttrsHasData($property)){
                 $baseClass::getInstance($keyId)->objAttrsUnSet($property,$uuid);
             }
         });
     }
+
     /**
      * 20220703;?仅执行删除动作
      * @global type $glSaveData
@@ -945,10 +884,6 @@ trait MainModelTrait {
         return $res;
     }
     
-    
-    
-    
-
     /**
      * 20230531:执行触发器
      * @param type $triggerKey      钩子key

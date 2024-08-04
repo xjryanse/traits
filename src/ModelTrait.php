@@ -4,13 +4,11 @@ namespace xjryanse\traits;
 use xjryanse\logic\SnowFlake;
 use xjryanse\system\service\SystemFileService;
 use xjryanse\logic\DbOperate;
-use xjryanse\logic\Debug;
 use xjryanse\logic\ModelQueryCon;
-use xjryanse\logic\Cachex;
-use xjryanse\logic\Arrays;
+use xjryanse\logic\Strings;
 use think\facade\Request;
 use think\Model;
-use Exception;
+// use Exception;
 
 /**
  * 模型复用
@@ -305,5 +303,35 @@ trait ModelTrait {
         
         $this->table = $sql;
         return $sql;
+    }
+    
+    
+    
+    /*
+     * 聚合下钻
+     * @createTime 20231028
+     */
+    public static function sqlGroupDown($con = [], $fields = [], $groups = []){
+        // 聚合字段必须返回
+        $fieldsN = array_merge($fields, $groups);
+        // 租户隔离
+        if(self::hasField('company_id')){
+            $con[] = ['company_id','=',session(SESSION_COMPANY_ID)];
+        }
+
+        $sql = self::where($con)
+                ->field(implode(',',$fieldsN))
+                ->group(implode(',',$groups))
+                ->buildSql();
+        
+        return $sql;
+    }
+    
+    public static function getRawTable(){
+        $prefix = config('database.prefix');
+        // TP框架扒来
+        // 当前模型名
+        $name       = basename(str_replace('\\', '/', static::class));
+        return $prefix.Strings::uncamelize($name);
     }
 }

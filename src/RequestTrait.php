@@ -16,7 +16,8 @@ trait RequestTrait
     protected function unsetEmpty( &$param ){
         if(is_array($param)){
             foreach($param as $k=>&$v){
-                if(!is_array($v) && !strlen($v)){
+                // 20240507:空多值无法查询
+                if((is_array($v) && !$v) || (!is_array($v) && !strlen($v))){
                     unset($param[$k]);
                 }
                 if(is_array($v)){

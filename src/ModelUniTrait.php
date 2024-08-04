@@ -132,36 +132,82 @@ WHERE
      */
     public function uniSetTable($con = []){
         $list   = self::$uniFields;
-        $table  = self::getTable();
+        // 20240707尝试
+        // $list   = self::uniFieldsArr();
+        
+        $tableRaw  = self::getTable();
+        // 20231020:因别名冲突，故去除最外层括号后重新添加。
+        $table = Strings::isStartWith($tableRaw, '(') 
+                ? '('.Strings::getInnerBlank($tableRaw) .')'
+                : $tableRaw;
+//        if(Debug::isDevIp()){
+//            dump($con);exit;
+//        }
         // 20230609:有关联查询
         $hasUni = false;
         foreach($list as $v){
+            // 单字段
             $existField = Arrays::value($v, 'exist_field') ? : DbOperate::fieldNameForExist($v['field']);
-            if(!ModelQueryCon::hasKey($con, $existField)){
+            // 20231113:增加关联查询映射字段数组:见FinanceStaffFee
+            $reflectFields  = Arrays::value($v, 'reflect_field') ? : [];
+            // 一维数组：['hasStatement','hasSettle']
+            $reflectKeys    = array_keys($reflectFields);
+            // if(!ModelQueryCon::hasKey($con, $existField)){
+            if(!ModelQueryCon::containKey($con, array_merge($reflectKeys,[$existField]))){
                 continue;
             }
             $hasUni = true;
             // 【】设置别名
             $tA     = $table;
+
             $tB     = DbOperate::prefix().$v['uni_name'];
-            $kA     = 'a'.Strings::camelize($v['uni_name']);
-            $kB     = 'b'.Strings::camelize($v['uni_name']);
-            // 【拼装查询条件】
-            $isExist = ModelQueryCon::parseValue($con, $existField);
-            if($isExist){
-                $where = ' where '.$kB.'.'.$v['uni_field'].' is not null';
-            } else {
-                $where = ' where '.$kB.'.'.$v['uni_field'].' is null';
+            $tBService = DbOperate::getService($tB);
+            // 20231020:标识分表
+            if(property_exists($tBService::mainModel(), 'isSeprate')  && $tBService::mainModel()::$isSeprate ){
+                $tbTable = $tBService::mainModel()->setConTable();
+                $tB = '('.Strings::getInnerBlank($tbTable) .')';
+            }
+            
+            $kA     = ' a'.Strings::camelize($v['uni_name']);
+            $kB     = ' b'.Strings::camelize($v['uni_name']);
+
+            $keyArr = [];
+            $keyArr[] = $kA.'.*';
+            // 20231113
+            if($reflectFields){
+                foreach($reflectFields as $k1=>$v1){
+                    $vKey       = Arrays::value($v1, 'key');
+                    $nullVal    = Arrays::value($v1, 'nullVal');
+                    $keyArr[] = 'ifnull('.$kB.'.'.$vKey.','.$nullVal. ') as `'.$k1.'`';         
+                }
             }
 
-            $sql    = "(select ".$kA.'.*,'.$isExist.' as `'.$existField.'` from '.$tA.' as '.$kA .' left join '.$tB.' as '.$kB.' on '.$kA.'.'.$v['field'].'='.$kB.'.'.$v['uni_field'].' '.$where.')';
+            $where = '';
+            // 处理存在字段
+            if(ModelQueryCon::hasKey($con, $existField)){
+                // 【拼装查询条件】
+                $isExist = ModelQueryCon::parseValue($con, $existField);
+                if($isExist){
+                    $where = ' where '.$kB.'.'.$v['uni_field'].' is not null';
+                } else {
+                    $where = ' where '.$kB.'.'.$v['uni_field'].' is null';
+                }
+                // 字段写一个
+                $keyArr[] = $isExist.' as `'.$existField.'`';                
+            }
 
+            // $sql    = "(select ".$kA.'.*,'.$isExist.' as `'.$existField.'` from '.$tA.' as '.$kA .' left join '.$tB.' as '.$kB.' on '.$kA.'.'.$v['field'].'='.$kB.'.'.$v['uni_field'].' '.$where.')';
+            $sql    = '(select '.implode(',',$keyArr).' from '.$tA.' as '.$kA .' left join '.$tB.' as '.$kB.' on '.$kA.'.'.$v['field'].'='.$kB.'.'.$v['uni_field'].' '.$where.')';
             $table = $sql;
+            // dump($sql);exit;
         }
         Debug::debug('uniSetTable的table', $table);
+
         if($hasUni){
             $this->table = $table.' as mainTable';
         }
+        
+        // return $list;
         return $this->table;
     }
     

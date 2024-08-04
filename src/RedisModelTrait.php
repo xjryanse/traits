@@ -4,7 +4,6 @@ namespace xjryanse\traits;
 
 use think\Db;
 use think\facade\Cache;
-use think\facade\Request;
 use xjryanse\logic\Debug;
 use xjryanse\system\service\SystemErrorLogService;
 use Redis;
@@ -51,9 +50,10 @@ trait RedisModelTrait {
             Cache::set('redisLogClasses', array_unique($redisClasses));
         }
         // 20221026
-        $data['company_id'] = session(SESSION_COMPANY_ID);
-        $data['creater'] = session(SESSION_USER_ID);
-        $data['create_time'] = date('Y-m-d H:i:s');
+        $data['company_id']     = session(SESSION_COMPANY_ID);
+        $data['creater']        = session(SESSION_USER_ID);
+        $data['create_time']    = date('Y-m-d H:i:s');
+        $data['source']         = session(SESSION_SOURCE);
         // $key = $this->chatKeyGenerate( $chatWithId );
         $key = self::redisKey();
         $res = self::redisInst()->lpush($key, json_encode($data, JSON_UNESCAPED_UNICODE));
@@ -68,7 +68,7 @@ trait RedisModelTrait {
         $index = 1;
         //每次只取100条
         $data = [];
-        while ($index <= 100) {
+        while ($index <= 50) {
             $tmpData = self::redisInst()->rpop($key);
             //只处理json格式的数据包
             if ($tmpData && is_array(json_decode($tmpData, true))) {
@@ -79,7 +79,7 @@ trait RedisModelTrait {
         if (!$data) {
             return false;
         }
-        Debug::debug('redisToDb数据', $data);
+        Debug::dump(self::getTable().'的redisToDb数据', $data);
         //开事务保存，保存失败数据恢复redis
         Db::startTrans();
         try {
